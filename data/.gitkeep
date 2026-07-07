@@ -1,0 +1,4 @@
+# data/
+# Holds the raw source documents (PDFs, .txt, .md, etc.) that will be
+# ingested into the vector database by ingest.py. Empty for now — this
+# placeholder file exists only so the folder is created and tracked.

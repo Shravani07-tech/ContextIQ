@@ -1,0 +1,14 @@
+# .streamlit/config.toml
+#
+# Streamlit's native theme settings — the foundation of the dark
+# look. assets/style.css builds on top of these base colors.
+# Palette is Linear/Vercel-inspired: near-black surfaces, soft
+# off-white text, one restrained indigo accent.
+
+[theme]
+base = "dark"
+primaryColor = "#7c6cf0"           # indigo accent (buttons, focus rings)
+backgroundColor = "#0e0e11"        # main canvas — near-black, slightly warm
+secondaryBackgroundColor = "#17171c"  # sidebar, inputs, cards
+textColor = "#e7e7ec"              # soft off-white, easier than pure white
+font = "sans serif"

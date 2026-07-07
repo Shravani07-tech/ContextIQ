@@ -1,0 +1,139 @@
+/* ==========================================================================
+   RAG Knowledge Bot — assets/style.css
+   Dark, minimal, Linear/Vercel/Notion-inspired skin on top of the
+   base theme in .streamlit/config.toml. Injected by load_css() in
+   app.py. Only stable Streamlit selectors (data-testid) are used.
+   ========================================================================== */
+
+/* --- Typography ----------------------------------------------------------
+   Inter for UI text (falls back to system fonts offline). Applied to
+   text elements only — never `*` — so Streamlit's icon font keeps
+   working. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.stApp, .stApp p, .stApp li, .stApp label, .stApp input, .stApp textarea,
+.stApp button, .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
+    font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Tighter, heavier headings — the Linear look. */
+.stApp h1 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+.stApp h2, .stApp h3 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+/* Muted secondary text (captions: file lists, hints). */
+[data-testid="stCaptionContainer"] {
+    color: #8f8f9c;
+}
+
+/* --- Layout & spacing ------------------------------------------------------
+   Narrow, centered reading column — chat reads like a document, not
+   a full-width dashboard. Padding relaxes on small screens. */
+.block-container {
+    max-width: 46rem;
+    padding-top: 3rem;
+    padding-bottom: 6rem;
+}
+@media (max-width: 640px) {
+    .block-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+/* Subtle dividers instead of harsh lines. */
+.stApp hr {
+    border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* Hide Streamlit's deploy button — this is a product, not a demo. */
+[data-testid="stAppDeployButton"] {
+    display: none;
+}
+
+/* --- Sidebar ---------------------------------------------------------------
+   A hair lighter than the canvas with a crisp 1px edge, so it reads
+   as a distinct panel — the Notion sidebar treatment. */
+[data-testid="stSidebar"] {
+    background: #131318;
+    border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+[data-testid="stSidebar"] h1 {
+    font-size: 1.25rem;
+}
+
+/* --- Buttons ---------------------------------------------------------------
+   Quiet by default, accent on hover. One gentle transition — no
+   animations beyond that. */
+.stButton > button {
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: #1c1c23;
+    font-weight: 500;
+    padding: 0.45rem 1rem;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.stButton > button:hover {
+    border-color: #7c6cf0;
+    background: #22222b;
+    color: inherit;
+}
+
+/* --- Cards: metric, expander, file uploader -------------------------------- */
+[data-testid="stMetric"] {
+    background: #17171c;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+}
+
+[data-testid="stExpander"] details {
+    background: #141419;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+}
+
+[data-testid="stFileUploaderDropzone"] {
+    background: #141419;
+    border: 1px dashed rgba(255, 255, 255, 0.16);
+    border-radius: 10px;
+    transition: border-color 0.15s ease;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: #7c6cf0;
+}
+
+/* Success / error notifications match the card language. */
+[data-testid="stAlertContainer"] {
+    border-radius: 10px;
+}
+
+/* --- Chat ------------------------------------------------------------------
+   Every message is a rounded card; the user's carries a faint indigo
+   tint so the two sides scan instantly without loud colors. */
+[data-testid="stChatMessage"] {
+    background: #17171c;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    padding: 1rem 1.15rem;
+    margin-bottom: 0.4rem;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+    background: #1a1926;
+    border-color: rgba(124, 108, 240, 0.28);
+}
+
+/* Input pinned at the bottom, matching the card language. */
+[data-testid="stChatInput"] {
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: #17171c;
+}
+[data-testid="stBottom"] > div {
+    background: #0e0e11;
+}

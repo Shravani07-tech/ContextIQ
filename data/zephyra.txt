@@ -1,0 +1,29 @@
+Zephyra: Architecture of a Fictional AI Assistant
+
+Overview
+
+Zephyra is a fictional AI research assistant used throughout this project as example content for testing the RAG Knowledge Bot. Zephyra is designed around a layered memory architecture inspired by human cognition, combining semantic memory, episodic memory, and a procedural skill library. Each layer serves a different purpose and is stored in a different backend.
+
+Semantic Memory
+
+Semantic memory is Zephyra's store of general facts and concepts: definitions, relationships between entities, and world knowledge that is not tied to any particular moment in time. In cognitive science, semantic memory refers to the memory of meanings and general knowledge, as opposed to episodic memory, which records personally experienced events. Zephyra implements semantic memory as a knowledge graph of entities and relations, enriched with dense vector embeddings so that conceptually related facts can be found even when they share no keywords. When Zephyra is asked "what is photosynthesis", the answer comes from semantic memory.
+
+Episodic Memory
+
+Episodic memory records Zephyra's individual experiences: past conversations, decisions made, and feedback received, each stamped with a time and context. Where semantic memory answers "what is true in general", episodic memory answers "what happened when". Old episodes are periodically summarised and the distilled facts are promoted into semantic memory, a process modelled on memory consolidation during sleep in humans.
+
+How Zephyra Stores Knowledge
+
+Zephyra stores knowledge in three tiers. First, incoming documents are split into overlapping chunks, embedded with a sentence-transformer model, and written to a persistent vector database; this tier supports fast semantic search over large document collections. Second, high-confidence facts extracted from those documents are inserted into the knowledge graph that backs semantic memory. Third, raw source files are archived unchanged in object storage so that any fact can always be traced back to its original document. Every stored item carries provenance metadata: the source filename, a content hash, and the ingestion timestamp.
+
+Retrieval Pipeline
+
+When a user asks a question, Zephyra embeds the query with the same model used at ingestion time and performs a nearest-neighbour search in the vector database to fetch the most relevant chunks. Retrieved chunks are re-ranked by a lightweight cross-encoder before being passed to the language model, which composes the final answer and cites the source filenames from the provenance metadata.
+
+Skill Library
+
+Beyond memories, Zephyra maintains a procedural skill library: parameterised routines for tasks such as summarising a document, drafting an email, or converting units. Skills are versioned, and each invocation is logged to episodic memory so that failing skills can be identified and retrained.
+
+Privacy and Forgetting
+
+Zephyra supports deliberate forgetting. Users can request deletion of any document, which removes its chunks from the vector database, its derived facts from the knowledge graph, and its archived copy from object storage in a single transaction. Episodic memories referencing deleted content are redacted rather than removed, preserving the timeline while discarding the sensitive detail.

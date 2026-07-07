@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Vector database contents are machine-generated — rebuild with
+# `python ingest.py`. The .gitkeep keeps the folder present.
+chroma_db/*
+!chroma_db/.gitkeep
+
+# User documents stay private; only the demo corpus is committed.
+data/*
+!data/.gitkeep
+!data/zephyra.txt
+
+# Streamlit secrets (none used today, guarded for the future)
+.streamlit/secrets.toml

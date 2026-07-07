@@ -1,0 +1,5 @@
+# chroma_db/
+# Persistent storage location for the Chroma vector database created
+# during ingestion. Chroma will populate this folder automatically
+# once ingest.py is implemented. Empty for now — this placeholder
+# file exists only so the folder is created and tracked.

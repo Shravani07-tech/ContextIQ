@@ -1,0 +1,19 @@
+# requirements.txt
+#
+# Python dependencies for the RAG Knowledge Bot, pinned to the
+# versions the project was built and verified against so installs
+# are reproducible.
+#
+# streamlit                -> web UI
+# pypdf                    -> PDF text extraction during ingestion
+# langchain-text-splitters -> recursive text chunking
+# sentence-transformers    -> embedding vectors (BGE model)
+# chromadb                 -> persistent vector database
+# requests                 -> HTTP client for the local Ollama server
+
+streamlit==1.59.0
+pypdf==6.14.2
+langchain-text-splitters==1.1.2
+sentence-transformers==5.6.0
+chromadb==1.5.9
+requests==2.34.2
