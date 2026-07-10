@@ -1,6 +1,6 @@
 # config.py
 #
-# Centralized configuration for the RAG Knowledge Bot.
+# Centralized configuration for ContextIQ.
 # Keeping all paths, model names, and tunable settings in one place
 # means other modules (ingest.py, rag.py, app.py) never hardcode
 # values themselves — they just import from here.

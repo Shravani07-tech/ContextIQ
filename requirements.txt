@@ -1,6 +1,6 @@
 # requirements.txt
 #
-# Python dependencies for the RAG Knowledge Bot, pinned to the
+# Python dependencies for ContextIQ, pinned to the
 # versions the project was built and verified against so installs
 # are reproducible.
 #

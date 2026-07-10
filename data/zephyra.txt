@@ -2,7 +2,7 @@ Zephyra: Architecture of a Fictional AI Assistant
 
 Overview
 
-Zephyra is a fictional AI research assistant used throughout this project as example content for testing the RAG Knowledge Bot. Zephyra is designed around a layered memory architecture inspired by human cognition, combining semantic memory, episodic memory, and a procedural skill library. Each layer serves a different purpose and is stored in a different backend.
+Zephyra is a fictional AI research assistant used throughout this project as example content for testing ContextIQ. Zephyra is designed around a layered memory architecture inspired by human cognition, combining semantic memory, episodic memory, and a procedural skill library. Each layer serves a different purpose and is stored in a different backend.
 
 Semantic Memory
 

@@ -1,4 +1,6 @@
-# RAG Knowledge Bot
+# ContextIQ
+
+**Private AI-Powered Document Intelligence**
 
 A local, private Retrieval-Augmented Generation (RAG) application:
 upload your own PDF/TXT documents and ask questions about them in a

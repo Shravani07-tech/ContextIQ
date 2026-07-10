@@ -2,13 +2,14 @@
 #
 # Streamlit's native theme settings — the foundation of the dark
 # look. assets/style.css builds on top of these base colors.
-# Palette is Linear/Vercel-inspired: near-black surfaces, soft
-# off-white text, one restrained indigo accent.
+# Palette is Linear/Vercel/ChatGPT-inspired: near-black surfaces,
+# soft off-white text, one consistent blue accent used everywhere
+# (buttons, links, focus rings, highlights) — no second accent color.
 
 [theme]
 base = "dark"
-primaryColor = "#7c6cf0"           # indigo accent (buttons, focus rings)
-backgroundColor = "#0e0e11"        # main canvas — near-black, slightly warm
-secondaryBackgroundColor = "#17171c"  # sidebar, inputs, cards
-textColor = "#e7e7ec"              # soft off-white, easier than pure white
+primaryColor = "#3B82F6"              # the ONE accent color, used everywhere
+backgroundColor = "#0a0a0c"           # main canvas — almost black
+secondaryBackgroundColor = "#151619"  # sidebar, inputs, cards — dark gray
+textColor = "#e7e7ea"                 # soft off-white, easier than pure white
 font = "sans serif"
