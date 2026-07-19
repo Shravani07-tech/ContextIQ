@@ -14,7 +14,11 @@ from pydantic import BaseModel, Field, field_validator
 class ChatRequest(BaseModel):
     """A single question for the knowledge base."""
 
-    question: str = Field(..., description="Natural-language question")
+    question: str = Field(
+        ...,
+        description="Natural-language question answered only from the indexed documents",
+        json_schema_extra={"example": "How does Zephyra store knowledge?"},
+    )
 
     @field_validator("question")
     @classmethod
@@ -30,16 +34,39 @@ class ChatRequest(BaseModel):
 class Source(BaseModel):
     """One retrieved chunk an answer was grounded on."""
 
-    filename: str
-    chunk_id: str
-    similarity: float
+    filename: str = Field(description="Source document the chunk came from")
+    chunk_id: str = Field(description="Unique chunk id within the database")
+    similarity: float = Field(
+        description="Cosine similarity in [0, 1]; higher = more relevant"
+    )
+    preview: str | None = Field(
+        default=None,
+        description="Leading snippet of the chunk's text, for source previews",
+    )
 
 
 class ChatResponse(BaseModel):
     """Grounded answer plus the sources it came from."""
 
-    answer: str
-    sources: list[Source]
+    answer: str = Field(description="Answer grounded in the indexed documents")
+    sources: list[Source] = Field(
+        description="Chunks the answer was based on, most relevant first"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "answer": "Zephyra stores knowledge in three tiers: ...",
+                "sources": [
+                    {
+                        "filename": "zephyra.txt",
+                        "chunk_id": "zephyra.txt-3",
+                        "similarity": 0.85,
+                    }
+                ],
+            }
+        }
+    }
 
 
 # --- documents / ingestion ---------------------------------------------------

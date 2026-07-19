@@ -12,6 +12,7 @@
 
 from fastapi import APIRouter, UploadFile
 
+from api.deps import DocumentServiceDep
 from api.schemas import (
     DocumentsResponse,
     FileResult,
@@ -19,14 +20,17 @@ from api.schemas import (
     IndexResponse,
     UploadResponse,
 )
-from api.services import document_service
 from vector_store import get_stored_filenames, get_vector_count
 
 router = APIRouter(tags=["documents"])
 
 
-@router.post("/upload", response_model=UploadResponse)
-def upload(files: list[UploadFile]) -> UploadResponse:
+@router.post(
+    "/upload",
+    response_model=UploadResponse,
+    summary="Stage PDF/TXT files into the document folder",
+)
+def upload(files: list[UploadFile], docs: DocumentServiceDep) -> UploadResponse:
     """
     Save uploaded PDF/TXT files into the data/ folder.
 
@@ -37,9 +41,7 @@ def upload(files: list[UploadFile]) -> UploadResponse:
     results: list[FileResult] = []
     for f in files:
         try:
-            safe_name = document_service.save_upload(
-                f.filename or "", f.file.read()
-            )
+            safe_name = docs.save_upload(f.filename or "", f.file.read())
             results.append(FileResult(filename=safe_name, status="saved"))
         except ValueError as e:
             results.append(
@@ -48,8 +50,14 @@ def upload(files: list[UploadFile]) -> UploadResponse:
     return UploadResponse(files=results)
 
 
-@router.post("/index", response_model=IndexResponse)
-def index(body: IndexRequest | None = None) -> IndexResponse:
+@router.post(
+    "/index",
+    response_model=IndexResponse,
+    summary="Index staged files into the vector database",
+)
+def index(
+    docs: DocumentServiceDep, body: IndexRequest | None = None
+) -> IndexResponse:
     """
     Index staged files through the existing pipeline.
 
@@ -58,14 +66,18 @@ def index(body: IndexRequest | None = None) -> IndexResponse:
     filenames list, only those files are processed.
     """
     filenames = body.filenames if body is not None else None
-    results = document_service.index_files(filenames)
+    results = docs.index_files(filenames)
     return IndexResponse(
         files=[FileResult(**r) for r in results],
         vector_count=get_vector_count(),
     )
 
 
-@router.get("/documents", response_model=DocumentsResponse)
+@router.get(
+    "/documents",
+    response_model=DocumentsResponse,
+    summary="List indexed documents",
+)
 def documents() -> DocumentsResponse:
     """Distinct source filenames currently in the vector database."""
     return DocumentsResponse(documents=get_stored_filenames())

@@ -10,8 +10,8 @@ import logging
 import requests
 from fastapi import APIRouter
 
+from api.deps import RagServiceDep
 from api.schemas import ClearDatabaseResponse, HealthResponse, StatusResponse
-from api.services import rag_service
 from config import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["system"])
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="Liveness and dependency reachability",
+)
 def health() -> HealthResponse:
     """
     Liveness plus reachability of the two external dependencies.
@@ -56,7 +60,11 @@ def health() -> HealthResponse:
     )
 
 
-@router.get("/status", response_model=StatusResponse)
+@router.get(
+    "/status",
+    response_model=StatusResponse,
+    summary="Knowledge-base status and pipeline settings",
+)
 def status() -> StatusResponse:
     """Everything the sidebar shows today: counts, files, settings."""
     documents = get_stored_filenames()
@@ -72,16 +80,20 @@ def status() -> StatusResponse:
     )
 
 
-@router.delete("/database", response_model=ClearDatabaseResponse)
-def clear() -> ClearDatabaseResponse:
+@router.delete(
+    "/database",
+    response_model=ClearDatabaseResponse,
+    summary="Delete every vector from the knowledge base",
+)
+def clear(rag: RagServiceDep) -> ClearDatabaseResponse:
     """
     Delete every vector from the knowledge base.
 
     Files in data/ are intentionally kept (same policy as the UI's
     Clear button) — POST /index can rebuild the database from them.
-    The cached Retriever's collection handle is refreshed because
+    The injected RagService's collection handle is refreshed because
     clearing deletes the collection it was holding.
     """
     clear_database()
-    rag_service.refresh_collection()
+    rag.refresh_collection()
     return ClearDatabaseResponse(status="cleared", vector_count=get_vector_count())

@@ -54,6 +54,20 @@ Each module has one job and they only depend downward
 (UI -> rag -> vector_store/llm; ingest -> vector_store), so any layer
 can be tested or swapped independently.
 
+## Quick start (dev)
+
+One command from the project root — starts the FastAPI backend
+(:8000) and the Next.js frontend (:3000), cleaning stale dev
+processes off both ports first so requests never silently break:
+
+```powershell
+.\run-dev.ps1          # Windows        (.\run-dev.ps1 -Stop to stop)
+./run-dev.sh           # Linux / macOS  (./run-dev.sh stop to stop)
+```
+
+VS Code users: **Run Task → Dev: Full Stack**, or debug both sides
+at once with the **Full Stack: ContextIQ** launch compound.
+
 ## Setup
 
 Prerequisites: Python 3.11+, [Ollama](https://ollama.com) installed

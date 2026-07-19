@@ -135,6 +135,12 @@ with TestClient(app) as client:  # `with` triggers the lifespan warm-up
               {"filename", "chunk_id", "similarity"} <= set(s) for s in body["sources"]
           ),
           f"{len(body['sources'])} source(s)")
+    check("chat sources carry preview snippets",
+          all(
+              isinstance(s.get("preview"), str) and len(s["preview"]) > 0
+              for s in body["sources"]
+          ),
+          (body["sources"][0].get("preview") or "")[:60] + "...")
 
     # Validation: blank questions are rejected before reaching the pipeline.
     r = client.post("/chat", json={"question": "   "})

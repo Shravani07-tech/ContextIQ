@@ -1,0 +1,47 @@
+{
+  // ContextIQ dev tasks (Terminal -> Run Task...).
+  // "Dev: Full Stack" runs backend + frontend side by side in the
+  // integrated terminal; the check/test tasks wrap the project's
+  // verification commands so nothing needs to be typed by hand.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dev: Backend (uvicorn :8000)",
+      "type": "shell",
+      "command": "python -m uvicorn api.main:app --port 8000",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "group": "dev" }
+    },
+    {
+      "label": "Dev: Frontend (next :3000)",
+      "type": "shell",
+      "command": "npm run dev -- -p 3000",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "group": "dev" }
+    },
+    {
+      "label": "Dev: Full Stack",
+      "dependsOn": ["Dev: Backend (uvicorn :8000)", "Dev: Frontend (next :3000)"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: Backend API suite",
+      "type": "shell",
+      "command": "python tests/test_api.py",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Check: Frontend build + lint",
+      "type": "shell",
+      "command": "npm run build; if ($?) { npm run lint }",
+      "options": { "cwd": "${workspaceFolder}/frontend", "shell": { "executable": "powershell.exe", "args": ["-Command"] } },
+      "problemMatcher": []
+    }
+  ]
+}

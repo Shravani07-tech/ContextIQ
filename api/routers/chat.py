@@ -1,39 +1,32 @@
 # api/routers/chat.py
 #
 # POST /chat — the core product endpoint: question in, grounded
-# answer + sources out. Thin wrapper over rag.answer_question() via
-# the service-layer singletons.
+# answer + sources out. The RagService arrives via dependency
+# injection; Ollama-connectivity errors are translated to 503 by the
+# global exception handler in main.py, so this handler stays trivial.
 
-import logging
+from fastapi import APIRouter
 
-import requests
-from fastapi import APIRouter, HTTPException
-
+from api.deps import RagServiceDep
 from api.schemas import ChatRequest, ChatResponse
-from api.services import rag_service
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
 
-@router.post("/chat", response_model=ChatResponse)
-def chat(body: ChatRequest) -> ChatResponse:
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    summary="Ask a question about the indexed documents",
+    responses={
+        503: {"description": "The Ollama language model is unreachable"},
+        422: {"description": "Question is empty or whitespace-only"},
+    },
+)
+def chat(body: ChatRequest, rag: RagServiceDep) -> ChatResponse:
     """
     Answer a question using only the indexed documents.
 
     Empty-database behavior comes from the pipeline itself: it returns
     the honest "I don't know" fallback without calling the LLM at all.
-    An unreachable Ollama server maps to 503 (temporary, retryable)
-    rather than a generic 500 — the raw exception goes to the server
-    log, never into the response body.
     """
-    try:
-        result = rag_service.ask(body.question)
-    except requests.RequestException:
-        logger.exception("Ollama request failed")
-        raise HTTPException(
-            status_code=503,
-            detail="The language model is unreachable. Is Ollama running?",
-        )
-    return ChatResponse(**result)
+    return ChatResponse(**rag.ask(body.question))

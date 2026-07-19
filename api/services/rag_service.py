@@ -1,17 +1,15 @@
 # api/services/rag_service.py
 #
-# Holds the two expensive objects — the Retriever (embedding model +
-# DB handle) and the LLM client — as lazy process-wide singletons.
+# Injectable service wrapping the two expensive backend objects — the
+# Retriever (embedding model + DB handle) and the LLM client. All
+# retrieval/generation logic stays in the untouched root modules;
+# this class only owns their lifecycle.
 #
-# This is the FastAPI equivalent of Streamlit's @st.cache_resource:
-# without it, every /chat request would reload the multi-second
-# SentenceTransformer from scratch (the app would work, just be
-# catastrophically slow — the #1 risk called out in the migration
-# plan). warm_up() is called from the app's lifespan hook so the
-# first real user request doesn't pay the cold-start cost either.
+# Instantiated exactly once per process via api.deps.get_rag_service
+# (lru_cache singleton) and warmed at startup by the lifespan hook so
+# no user request ever pays the multi-second model cold start.
 
 import logging
-import threading
 
 from llm import LLM
 from rag import Retriever, answer_question
@@ -19,53 +17,53 @@ from vector_store import get_collection
 
 logger = logging.getLogger(__name__)
 
-# Lock guards first-time construction when several requests race in
-# the threadpool; after that, reads are cheap attribute lookups.
-_lock = threading.Lock()
-_retriever: Retriever | None = None
-_llm: LLM | None = None
+# How much of a cited chunk the API returns as preview text — enough
+# to judge relevance at a glance without shipping whole chunks.
+PREVIEW_CHARS = 320
 
 
-def get_retriever() -> Retriever:
-    """Return the shared Retriever, building it on first use."""
-    global _retriever
-    if _retriever is None:
-        with _lock:
-            if _retriever is None:
-                logger.info("Building Retriever (loads embedding model)...")
-                _retriever = Retriever()
-    return _retriever
+class RagService:
+    """Owns the shared Retriever + LLM and answers questions with them."""
 
+    def __init__(self) -> None:
+        logger.info("Building RagService (loads embedding model)...")
+        self.retriever = Retriever()
+        self.llm = LLM()
 
-def get_llm() -> LLM:
-    """Return the shared LLM client, building it on first use."""
-    global _llm
-    if _llm is None:
-        with _lock:
-            if _llm is None:
-                _llm = LLM()
-    return _llm
+    def ask(self, question: str) -> dict:
+        """
+        Answer one question via the existing full RAG pipeline, then
+        enrich each cited source with a preview snippet of its chunk.
 
+        answer_question() deliberately returns source METADATA only;
+        the preview text is fetched here, at the API layer, by chunk
+        id — so the core pipeline stays byte-identical while the API
+        can power expandable source previews in the UI.
+        """
+        result = answer_question(question, self.retriever, self.llm)
 
-def warm_up() -> None:
-    """Eagerly build both singletons (called at server startup)."""
-    get_retriever()
-    get_llm()
+        ids = [source["chunk_id"] for source in result["sources"]]
+        if ids:
+            records = self.retriever.collection.get(
+                ids=ids, include=["documents"]
+            )
+            texts = dict(zip(records["ids"], records["documents"]))
+            for source in result["sources"]:
+                text = texts.get(source["chunk_id"])
+                if text:
+                    source["preview"] = text[:PREVIEW_CHARS] + (
+                        "…" if len(text) > PREVIEW_CHARS else ""
+                    )
 
+        return result
 
-def ask(question: str) -> dict:
-    """Answer one question via the existing full RAG pipeline."""
-    return answer_question(question, get_retriever(), get_llm())
+    def refresh_collection(self) -> None:
+        """
+        Re-point the cached Retriever at a fresh Chroma collection.
 
-
-def refresh_collection() -> None:
-    """
-    Re-point the cached Retriever at a fresh Chroma collection.
-
-    Needed after DELETE /database: clearing deletes the collection the
-    Retriever is holding, so its handle goes stale. Re-fetching just
-    the collection (rather than rebuilding the whole Retriever) avoids
-    a needless multi-second embedding-model reload.
-    """
-    if _retriever is not None:
-        _retriever.collection = get_collection()
+        Needed after DELETE /database: clearing deletes the collection
+        the Retriever is holding, so its handle goes stale. Re-fetching
+        just the collection (rather than rebuilding the whole service)
+        avoids a needless embedding-model reload.
+        """
+        self.retriever.collection = get_collection()
