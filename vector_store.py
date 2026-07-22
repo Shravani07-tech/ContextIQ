@@ -94,6 +94,23 @@ def get_stored_filenames() -> list[str]:
     return sorted({meta["filename"] for meta in records["metadatas"]})
 
 
+def delete_document(filename: str) -> int:
+    """
+    Delete every chunk belonging to one filename from the collection.
+
+    Uses the same delete-by-filename primitive save_chunks() already
+    relies on internally when replacing a re-uploaded file — this
+    just exposes it for a single file with nothing new taking its
+    place. Deleting a filename that isn't present is a no-op, not an
+    error (idempotent, matching clear_database()'s policy).
+
+    Returns the total number of vectors remaining after the delete.
+    """
+    collection = get_collection()
+    collection.delete(where={"filename": filename})
+    return collection.count()
+
+
 def clear_database() -> None:
     """
     Delete the entire collection and all vectors it holds.

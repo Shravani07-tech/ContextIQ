@@ -10,9 +10,10 @@
 # no user request ever pays the multi-second model cold start.
 
 import logging
+from collections.abc import Iterator
 
 from llm import LLM
-from rag import Retriever, answer_question
+from rag import Retriever, answer_question, answer_question_stream
 from vector_store import get_collection
 
 logger = logging.getLogger(__name__)
@@ -41,21 +42,36 @@ class RagService:
         can power expandable source previews in the UI.
         """
         result = answer_question(question, self.retriever, self.llm)
-
-        ids = [source["chunk_id"] for source in result["sources"]]
-        if ids:
-            records = self.retriever.collection.get(
-                ids=ids, include=["documents"]
-            )
-            texts = dict(zip(records["ids"], records["documents"]))
-            for source in result["sources"]:
-                text = texts.get(source["chunk_id"])
-                if text:
-                    source["preview"] = text[:PREVIEW_CHARS] + (
-                        "…" if len(text) > PREVIEW_CHARS else ""
-                    )
-
+        self._enrich_sources(result["sources"])
         return result
+
+    def _enrich_sources(self, sources: list[dict]) -> None:
+        """Attach a preview snippet to each source, in place — the
+        same enrichment ask() does, factored out so the streaming
+        path can apply it before the sources event goes out."""
+        ids = [source["chunk_id"] for source in sources]
+        if not ids:
+            return
+        records = self.retriever.collection.get(ids=ids, include=["documents"])
+        texts = dict(zip(records["ids"], records["documents"]))
+        for source in sources:
+            text = texts.get(source["chunk_id"])
+            if text:
+                source["preview"] = text[:PREVIEW_CHARS] + (
+                    "…" if len(text) > PREVIEW_CHARS else ""
+                )
+
+    def ask_stream(self, question: str) -> Iterator[dict]:
+        """
+        Streaming counterpart to ask(): same preview enrichment for
+        sources, applied before the "sources" event is yielded rather
+        than after the fact — streaming sends sources to the client
+        immediately, so enrichment can't happen retroactively.
+        """
+        for event in answer_question_stream(question, self.retriever, self.llm):
+            if event["type"] == "sources":
+                self._enrich_sources(event["sources"])
+            yield event
 
     def refresh_collection(self) -> None:
         """

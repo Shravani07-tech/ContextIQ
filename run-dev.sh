@@ -80,9 +80,10 @@ nohup python -m uvicorn api.main:app --port "$BACKEND_PORT" \
   > "$ROOT/.dev/backend.out.log" 2> "$ROOT/.dev/backend.err.log" &
 echo $! > "$ROOT/.dev/backend.pid"
 
-# Backend warm-up loads the embedding model — allow generous time.
+# Backend warm-up loads the embedding model and may revalidate its
+# HuggingFace cache over the network — allow 240s before giving up.
 backend_ok=0
-wait_for_http "http://localhost:$BACKEND_PORT/health" 120 "Backend" && backend_ok=1
+wait_for_http "http://localhost:$BACKEND_PORT/health" 240 "Backend" && backend_ok=1
 
 echo "Starting frontend on :$FRONTEND_PORT ..."
 (cd "$ROOT/frontend" && nohup npm run dev -- -p "$FRONTEND_PORT" \

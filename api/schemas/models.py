@@ -109,6 +109,14 @@ class DocumentsResponse(BaseModel):
     documents: list[str]
 
 
+class DeleteDocumentResponse(BaseModel):
+    """Outcome of DELETE /documents/{filename}."""
+
+    filename: str
+    status: str  # "deleted"
+    vector_count: int
+
+
 # --- system ------------------------------------------------------------------
 
 

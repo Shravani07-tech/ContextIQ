@@ -6,9 +6,12 @@
 import type {
   ChatResponse,
   ClearDatabaseResponse,
+  DeleteDocumentResponse,
   DocumentsResponse,
   HealthResponse,
   IndexResponse,
+  Source,
+  StatusResponse,
   UploadResponse,
 } from "@/lib/types";
 
@@ -23,6 +26,22 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/**
+ * Best-effort human-readable message for a non-OK response. FastAPI
+ * errors carry {"detail": "..."} — surface that when present, else
+ * fall back to a generic "Request failed (status)". Accepts the raw
+ * body text (works for both fetch responses and XHR responseText).
+ */
+function errorDetail(rawBody: string, status: number): string {
+  try {
+    const body = JSON.parse(rawBody);
+    if (typeof body?.detail === "string") return body.detail;
+  } catch {
+    // Non-JSON error body — keep the generic message.
+  }
+  return `Request failed (${status})`;
 }
 
 async function request<T>(
@@ -58,15 +77,10 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    // FastAPI errors carry {"detail": "..."} — surface it when present.
-    let detail = `Request failed (${response.status})`;
-    try {
-      const body = await response.json();
-      if (typeof body?.detail === "string") detail = body.detail;
-    } catch {
-      // Non-JSON error body — keep the generic message.
-    }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(
+      response.status,
+      errorDetail(await response.text(), response.status),
+    );
   }
 
   return response.json() as Promise<T>;
@@ -79,16 +93,25 @@ export const api = {
   /** GET /documents — filenames currently in the vector database. */
   documents: () => request<DocumentsResponse>("/documents"),
 
+  /** GET /status — knowledge-base counts + pipeline settings. */
+  status: () => request<StatusResponse>("/status"),
+
   /**
    * POST /upload — stage PDF/TXT files into the backend's data folder.
    *
    * Uses XMLHttpRequest instead of fetch because fetch cannot report
    * UPLOAD progress; XHR's upload.onprogress gives the byte-level
-   * percentage the dropzone's progress bar displays.
+   * percentage the dropzone's progress bar displays. Returns both the
+   * promise AND a cancel() handle (XHR supports .abort() natively),
+   * so the UI can offer a real Cancel button instead of just waiting
+   * it out.
    */
-  upload: (files: File[], onProgress?: (percent: number) => void) =>
-    new Promise<UploadResponse>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+  upload: (
+    files: File[],
+    onProgress?: (percent: number) => void,
+  ): { promise: Promise<UploadResponse>; cancel: () => void } => {
+    const xhr = new XMLHttpRequest();
+    const promise = new Promise<UploadResponse>((resolve, reject) => {
       xhr.open("POST", `${API_URL}/upload`);
 
       xhr.upload.onprogress = (e) => {
@@ -100,23 +123,22 @@ export const api = {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(JSON.parse(xhr.responseText) as UploadResponse);
         } else {
-          let detail = `Request failed (${xhr.status})`;
-          try {
-            const body = JSON.parse(xhr.responseText);
-            if (typeof body?.detail === "string") detail = body.detail;
-          } catch {
-            // Non-JSON error body — keep the generic message.
-          }
-          reject(new ApiError(xhr.status, detail));
+          reject(
+            new ApiError(xhr.status, errorDetail(xhr.responseText, xhr.status)),
+          );
         }
       };
       xhr.onerror = () =>
         reject(new ApiError(0, "Backend is unreachable. Is the API running?"));
+      xhr.onabort = () => reject(new ApiError(0, "Upload cancelled."));
 
       const form = new FormData();
       for (const file of files) form.append("files", file);
       xhr.send(form);
-    }),
+    });
+
+    return { promise, cancel: () => xhr.abort() };
+  },
 
   /** POST /index — run the ingestion pipeline over staged files. */
   index: (filenames?: string[]) =>
@@ -139,7 +161,98 @@ export const api = {
       180_000,
     ),
 
+  /**
+   * POST /chat/stream — same grounded pipeline as chat(), but the
+   * answer arrives progressively over Server-Sent Events instead of
+   * as one JSON blob.
+   *
+   * Takes callbacks rather than returning a promise-of-the-answer,
+   * since the whole point is delivering partial results as they
+   * arrive. `signal` is the caller's own AbortController — when it
+   * fires, this function stops silently (no callback), because the
+   * caller already knows it stopped deliberately (it's the one that
+   * called .abort()) and owns finalizing the UI state from whatever
+   * was accumulated so far.
+   */
+  chatStream: async (
+    question: string,
+    callbacks: {
+      onSources: (sources: Source[]) => void;
+      onToken: (text: string) => void;
+      onDone: () => void;
+      onError: (detail: string) => void;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+        signal,
+      });
+    } catch {
+      if (signal.aborted) return;
+      callbacks.onError("Backend is unreachable. Is the API running?");
+      return;
+    }
+
+    if (!response.ok || !response.body) {
+      callbacks.onError(errorDetail(await response.text(), response.status));
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE frames are separated by a blank line.
+        let sepIndex: number;
+        while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+          const frame = buffer.slice(0, sepIndex);
+          buffer = buffer.slice(sepIndex + 2);
+          const dataLine = frame
+            .split("\n")
+            .find((line) => line.startsWith("data: "));
+          if (!dataLine) continue;
+
+          const event = JSON.parse(dataLine.slice("data: ".length));
+          if (event.type === "sources") callbacks.onSources(event.sources);
+          else if (event.type === "token") callbacks.onToken(event.text);
+          else if (event.type === "done") {
+            callbacks.onDone();
+            return;
+          } else if (event.type === "error") {
+            callbacks.onError(event.detail);
+            return;
+          }
+        }
+      }
+      // Stream closed without an explicit "done" event — treat as
+      // complete rather than leaving the caller waiting forever.
+      callbacks.onDone();
+    } catch {
+      if (signal.aborted) return;
+      callbacks.onError("The connection was interrupted mid-answer.");
+    }
+  },
+
   /** DELETE /database — clear every vector (files on disk are kept). */
   clearDatabase: () =>
     request<ClearDatabaseResponse>("/database", { method: "DELETE" }),
+
+  /** DELETE /documents/{filename} — remove one document; every other
+      document in the knowledge base is untouched. */
+  deleteDocument: (filename: string) =>
+    request<DeleteDocumentResponse>(
+      `/documents/${encodeURIComponent(filename)}`,
+      { method: "DELETE" },
+    ),
 };

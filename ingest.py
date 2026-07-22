@@ -16,9 +16,9 @@ import os
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
 
-from config import CHUNK_OVERLAP, CHUNK_SIZE, DATA_DIR, EMBEDDING_MODEL_NAME
+from config import CHUNK_OVERLAP, CHUNK_SIZE, DATA_DIR
+from embedding_model import get_embedding_model
 from vector_store import save_chunks
 
 logger = logging.getLogger(__name__)
@@ -147,21 +147,6 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
         logger.info("Chunked '%s': %d chunk(s)", doc["filename"], len(pieces))
 
     return all_chunks
-
-
-# Module-level cache so the embedding model is loaded at most once
-# per process, however many times embed_chunks() is called (e.g. a
-# user uploading five files through the UI in a row).
-_embedding_model: SentenceTransformer | None = None
-
-
-def get_embedding_model() -> SentenceTransformer:
-    """Return the shared embedding model, loading it on first use."""
-    global _embedding_model
-    if _embedding_model is None:
-        logger.info("Loading embedding model '%s'...", EMBEDDING_MODEL_NAME)
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    return _embedding_model
 
 
 def embed_chunks(chunks: list[dict]) -> list[dict]:

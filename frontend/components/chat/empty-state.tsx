@@ -4,6 +4,7 @@
 // display step). Shown until the first message exists. Quick-action
 // cards now send a real starter question through the chat context.
 
+import { motion, useReducedMotion } from "framer-motion";
 import {
   FileSearch,
   FileText,
@@ -42,6 +43,7 @@ const QUICK_ACTIONS = [
 
 export function EmptyState() {
   const { sendMessage } = useChat();
+  const reduceMotion = useReducedMotion();
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-3 py-12 text-center">
@@ -63,11 +65,14 @@ export function EmptyState() {
 
       {/* Quick actions — 2×2 on small screens and up, stacked on phones. */}
       <div className="mt-6 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
-        {QUICK_ACTIONS.map(({ icon: Icon, title, description, prompt }) => (
-          <button
+        {QUICK_ACTIONS.map(({ icon: Icon, title, description, prompt }, index) => (
+          <motion.button
             key={title}
             type="button"
             onClick={() => sendMessage(prompt)}
+            initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut", delay: index * 0.05 }}
             className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors duration-150 hover:border-ring/50 hover:bg-accent"
           >
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
@@ -79,7 +84,7 @@ export function EmptyState() {
                 {description}
               </p>
             </div>
-          </button>
+          </motion.button>
         ))}
       </div>
     </div>

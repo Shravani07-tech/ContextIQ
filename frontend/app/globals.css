@@ -187,6 +187,109 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+
+  /* Pressed-state feedback, app-wide. Most buttons in this app are
+     plain <button> elements (not the shadcn Button primitive, which
+     already presses via `active:translate-y-px`) — this extends
+     that exact same 1px-down convention to every one of them, so
+     press feedback is consistent rather than a second, different
+     language. :not([aria-haspopup]) mirrors shadcn's own exclusion:
+     a dialog/menu trigger visibly dipping right as its popup opens
+     reads as janky, not tactile. Gated on prefers-reduced-motion —
+     this is a 1px shift, not the kind of motion that rule targets,
+     but this app has been strict about gating everything. */
+  @media (prefers-reduced-motion: no-preference) {
+    button:not([aria-haspopup]):not(:disabled):active {
+      transform: translateY(1px);
+      transition: transform 100ms ease-out;
+    }
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Code syntax highlighting (rehype-highlight / highlight.js token
+   classes). Deliberately reuses the EXISTING accent + status tokens
+   rather than introducing a separate code-theme palette — six colors
+   is enough to read as "highlighted," and every hex value in the
+   product still traces back to the one root token block.
+   -------------------------------------------------------------------------- */
+.hljs-comment,
+.hljs-quote {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst {
+  color: var(--ring);
+  font-weight: 600;
+}
+.hljs-string,
+.hljs-doctag,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--success);
+}
+.hljs-number,
+.hljs-literal {
+  color: var(--warning);
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_,
+.hljs-section {
+  color: var(--text);
+  font-weight: 600;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-variable {
+  color: var(--info);
+}
+.hljs-built_in,
+.hljs-type,
+.hljs-class,
+.hljs-tag,
+.hljs-name {
+  color: var(--ring);
+}
+.hljs-deletion {
+  color: var(--error);
+}
+.hljs-meta {
+  color: var(--text-muted);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   Streaming cursor — the blinking bar at the end of an in-progress
+   answer, replacing the typing dots once real content starts
+   arriving. Static (non-blinking) under reduced-motion — still a
+   clear "generating" signal, just without the loop.
+   -------------------------------------------------------------------------- */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--ring);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .streaming-cursor {
+    animation: cursor-blink 1s step-start infinite;
+  }
+}
+@keyframes cursor-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 /* --------------------------------------------------------------------------

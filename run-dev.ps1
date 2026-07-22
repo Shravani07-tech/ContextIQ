@@ -100,8 +100,10 @@ Start-Process -FilePath "python" `
     -RedirectStandardOutput "$Root\.dev\backend.out.log" `
     -RedirectStandardError "$Root\.dev\backend.err.log"
 
-# Backend warm-up loads the embedding model - allow generous time.
-$backendOk = Wait-ForHttp "http://localhost:$BackendPort/health" 120 "Backend"
+# Backend warm-up loads the embedding model and may revalidate its
+# HuggingFace cache over the network - observed cold starts exceed
+# 120s on this machine, so allow 240s before giving up.
+$backendOk = Wait-ForHttp "http://localhost:$BackendPort/health" 240 "Backend"
 
 Write-Host "Starting frontend on :$FrontendPort ..."
 Start-Process -FilePath "npm.cmd" `

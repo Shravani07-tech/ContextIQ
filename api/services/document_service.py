@@ -12,6 +12,7 @@ import os
 
 from config import DATA_DIR
 from ingest import ingest_file
+from vector_store import delete_document
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +87,43 @@ class DocumentService:
                 )
             except Exception as e:
                 logger.exception("Indexing failed for '%s'", name)
+                error = str(e)
+
+                # A file that failed to index is an orphan: it sits in
+                # data/ invisible to the UI (GET /documents only lists
+                # what's actually in the vector store), but would
+                # silently resurface — and get indexed with whatever
+                # caused the original failure — the next time someone
+                # runs a full reindex. Remove it now and say so, so
+                # the failure is fully resolved rather than deferred.
+                try:
+                    os.remove(path)
+                    error += " (the file has been removed — re-upload to retry)"
+                except OSError:
+                    logger.exception(
+                        "Could not remove orphaned file '%s' after failed indexing",
+                        name,
+                    )
+
                 results.append(
-                    {"filename": name, "status": "error", "error": str(e)}
+                    {"filename": name, "status": "error", "error": error}
                 )
 
         return results
+
+    def delete_document(self, filename: str) -> int:
+        """
+        Remove one document completely: its vectors from Chroma AND
+        its file from data/ (if still present — it may already be
+        gone, e.g. after an earlier failed-index cleanup).
+
+        Returns the vector count remaining after the delete.
+        """
+        safe_name = os.path.basename(filename)
+        count = delete_document(safe_name)
+
+        path = os.path.join(DATA_DIR, safe_name)
+        if os.path.isfile(path):
+            os.remove(path)
+
+        return count

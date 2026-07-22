@@ -19,3 +19,6 @@ data/*
 
 # Dev-server logs and pidfiles written by run-dev.ps1 / run-dev.sh
 .dev/
+
+# Windows Explorer folder-settings junk
+desktop.ini

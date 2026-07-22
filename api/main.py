@@ -19,7 +19,22 @@ from fastapi.responses import JSONResponse
 
 from api.deps import get_rag_service
 from api.routers import chat, documents, system
-from config import CORS_ORIGINS
+from config import CORS_ORIGINS, MAX_UPLOAD_MB
+
+# Total-request ceiling, well above one file's cap to allow legitimate
+# multi-file batches. This is enforced from the Content-Length HEADER,
+# before Starlette parses the body — the per-file check in
+# routers/documents.py runs AFTER the whole multipart body is already
+# received (FastAPI must parse it to populate `files: list[UploadFile]`
+# before the route function ever executes), so it alone cannot stop an
+# oversized upload from being spooled to disk first. This middleware
+# is the actual first line of defense.
+#
+# Residual limitation, stated plainly: a client that lies about
+# Content-Length (or uses chunked transfer-encoding without one) can
+# still bypass this check — a fully airtight guarantee needs streaming
+# byte-counting at the ASGI level, which is out of scope here.
+MAX_REQUEST_BYTES = MAX_UPLOAD_MB * 4 * 1024 * 1024
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,6 +99,30 @@ async def log_requests(request: Request, call_next):
         elapsed_ms,
     )
     return response
+
+
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    """
+    Reject oversized requests before their body is read at all.
+
+    Placed after log_requests (in registration order) so a rejected
+    request is still logged, and Starlette applies CORS as the
+    outermost layer regardless, so a 413 still carries the right
+    CORS headers for the browser to actually see it.
+    """
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_REQUEST_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={
+                "detail": (
+                    f"Request body exceeds the "
+                    f"{MAX_REQUEST_BYTES // (1024 * 1024)} MB limit"
+                )
+            },
+        )
+    return await call_next(request)
 
 
 @app.exception_handler(requests.RequestException)

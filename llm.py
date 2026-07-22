@@ -6,6 +6,9 @@
 # for text and never deals with HTTP details. Swapping Ollama for a
 # different LLM backend would only change this file.
 
+import json
+from collections.abc import Iterator
+
 import requests
 
 from config import LLM_MODEL_NAME, OLLAMA_BASE_URL
@@ -69,3 +72,46 @@ class LLM:
         )
         response.raise_for_status()
         return response.json()["message"]["content"]
+
+    def generate_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        """
+        Same request as generate(), but stream=True: Ollama responds
+        with one newline-delimited JSON object per token (or small
+        batch of tokens) instead of one big JSON blob at the end.
+        Yields each text delta as it arrives.
+
+        The connection is closed in `finally` regardless of how this
+        generator's iteration ends — including a caller abandoning it
+        partway through (e.g. the client disconnected and the SSE
+        route generator got torn down). Closing the underlying
+        response tells Ollama the request is no longer wanted, so it
+        stops spending CPU generating tokens nobody will see, instead
+        of running to completion in the background regardless.
+        """
+        response = requests.post(
+            f"{self.base_url}/api/chat",
+            json={
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "stream": True,
+                "options": {"temperature": 0.1},
+            },
+            stream=True,
+            timeout=300,
+        )
+        response.raise_for_status()
+        try:
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                text = chunk.get("message", {}).get("content", "")
+                if text:
+                    yield text
+                if chunk.get("done"):
+                    break
+        finally:
+            response.close()

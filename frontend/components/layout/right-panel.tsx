@@ -1,18 +1,18 @@
 "use client";
 
-// Right utility panel — now live:
+// Right utility panel — fully live:
 //   Recent Sources        <- the latest assistant answer's citations
-//   Knowledge Statistics  <- document count from GET /documents
+//   Knowledge Statistics  <- GET /status (vectors, docs, chunking, top-K)
 //   System Status         <- GET /health (API / ChromaDB / Ollama)
-// Vector count, chunk size, and top-K need GET /status — wired in
-// Phase 3B; until then those rows show an em dash, not fake numbers.
 
 import { Activity, BarChart3, Link2, SearchX } from "lucide-react";
 
+import { EmptyPanelState } from "@/components/shared/empty-panel-state";
+import { SimilarityBadge } from "@/components/shared/similarity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChat } from "@/hooks/useChat";
-import { useDocuments } from "@/hooks/useDocuments";
 import { useHealth } from "@/hooks/useHealth";
+import { useStatus } from "@/hooks/useStatus";
 
 function PanelSection({
   icon,
@@ -50,18 +50,20 @@ function StatusDot({ ok }: { ok: boolean }) {
 
 export function RightPanel() {
   const { lastSources } = useChat();
-  const documents = useDocuments();
+  const status = useStatus();
   const health = useHealth();
 
+  // Every value live from GET /status; em dash only while loading
+  // or unreachable — never a fake number.
+  const s = status.data;
   const stats = [
+    { label: "Documents", value: s ? String(s.document_count) : "—" },
+    { label: "Vectors", value: s ? String(s.vector_count) : "—" },
     {
-      label: "Documents",
-      value: documents.isSuccess ? String(documents.data.length) : "—",
+      label: "Chunk size",
+      value: s ? `${s.chunk_size} / ${s.chunk_overlap}` : "—",
     },
-    // These three come from GET /status — Phase 3B.
-    { label: "Vectors", value: "—" },
-    { label: "Chunk size", value: "—" },
-    { label: "Top-K", value: "—" },
+    { label: "Top-K", value: s ? String(s.top_k) : "—" },
   ];
 
   const systems = [
@@ -78,33 +80,31 @@ export function RightPanel() {
       >
         {lastSources.length > 0 ? (
           <ul className="flex flex-col gap-2">
-            {lastSources.map((s) => (
+            {/* Named `source`, not `s` — avoids shadowing the outer
+                `s` (status.data) bound just above this block. */}
+            {lastSources.map((source) => (
               <li
-                key={s.chunk_id}
+                key={source.chunk_id}
                 className="rounded-md border border-border bg-card p-3 transition-colors duration-150 hover:bg-accent"
               >
                 <p className="truncate text-[13px] font-semibold">
-                  {s.filename}
+                  {source.filename}
                 </p>
                 <div className="mt-1 flex items-center justify-between gap-2">
                   <span className="truncate rounded-full bg-secondary px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                    {s.chunk_id}
+                    {source.chunk_id}
                   </span>
-                  <span className="shrink-0 text-[13px] font-bold tabular-nums text-ring">
-                    {(s.similarity * 100).toFixed(1)}%
-                  </span>
+                  <SimilarityBadge score={source.similarity} />
                 </div>
               </li>
             ))}
           </ul>
         ) : (
-          <div className="flex flex-col items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-5 text-center">
-            <SearchX className="size-4 text-muted-foreground" aria-hidden />
-            <p className="text-[13px] text-muted-foreground">No sources yet</p>
-            <p className="text-xs text-muted-foreground/70">
-              Cited chunks appear after your first question
-            </p>
-          </div>
+          <EmptyPanelState
+            icon={SearchX}
+            title="No sources yet"
+            description="Cited chunks appear after your first question"
+          />
         )}
       </PanelSection>
 
@@ -112,7 +112,7 @@ export function RightPanel() {
         icon={<BarChart3 className="size-3.5" aria-hidden />}
         title="Knowledge Statistics"
       >
-        {documents.isPending ? (
+        {status.isPending ? (
           <Skeleton className="h-28 rounded-lg" />
         ) : (
           <div className="rounded-lg border border-border bg-card p-4">

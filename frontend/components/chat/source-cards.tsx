@@ -10,6 +10,8 @@
 import { ChevronDown, Link2 } from "lucide-react";
 import { useState } from "react";
 
+import { CopyButton } from "@/components/shared/copy-button";
+import { SimilarityBadge } from "@/components/shared/similarity-badge";
 import type { Source } from "@/lib/types";
 
 /** "zephyra.txt-3" -> "3" (filenames may themselves contain dashes). */
@@ -37,9 +39,7 @@ function SourceRow({ source }: { source: Source }) {
         <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 font-mono text-xs text-muted-foreground">
           chunk {chunkNumber(source.chunk_id)}
         </span>
-        <span className="shrink-0 text-[13px] font-bold tabular-nums text-ring">
-          {(source.similarity * 100).toFixed(1)}%
-        </span>
+        <SimilarityBadge score={source.similarity} />
         {expandable && (
           <ChevronDown
             className={`size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ${
@@ -51,9 +51,16 @@ function SourceRow({ source }: { source: Source }) {
       </button>
 
       {open && source.preview && (
-        <p className="border-t border-border px-3 py-2 text-[13px] leading-relaxed text-muted-foreground">
-          {source.preview}
-        </p>
+        <div className="flex items-start justify-between gap-2 border-t border-border px-3 py-2">
+          <p className="text-[13px] leading-relaxed text-muted-foreground">
+            {source.preview}
+          </p>
+          <CopyButton
+            text={source.preview}
+            label="Copy source text"
+            className="shrink-0 p-1"
+          />
+        </div>
       )}
     </li>
   );

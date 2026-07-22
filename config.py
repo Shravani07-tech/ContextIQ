@@ -59,6 +59,11 @@ EMBEDDING_MODEL_NAME = os.getenv(
 # Number of most-relevant chunks to retrieve for each user query.
 TOP_K = _env_int("CONTEXTIQ_TOP_K", 5)
 
+# Server-side per-file upload limit. The frontend enforces the same
+# number client-side for fast feedback, but THIS is the security
+# boundary — anything talking to the API directly hits it too.
+MAX_UPLOAD_MB = _env_int("CONTEXTIQ_MAX_UPLOAD_MB", 25)
+
 # BGE embedding models are trained to embed short QUERIES with this
 # instruction prefix (it improves retrieval quality). Document chunks
 # are embedded WITHOUT it — the prefix is for queries only.
