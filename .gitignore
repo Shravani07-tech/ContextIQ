@@ -9,10 +9,12 @@ venv/
 chroma_db/*
 !chroma_db/.gitkeep
 
-# User documents stay private; only the demo corpus is committed.
+# User documents stay private; only the demo corpus and the folder
+# README are committed.
 data/*
 !data/.gitkeep
 !data/zephyra.txt
+!data/README.md
 
 
 # Dev-server logs and pidfiles written by run-dev.ps1 / run-dev.sh
