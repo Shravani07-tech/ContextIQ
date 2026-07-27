@@ -1,0 +1,101 @@
+# docker-compose.yml — ContextIQ production-quality LOCAL deployment.
+#
+# Services:
+#   ollama       the local LLM server (heavy; own model volume)
+#   ollama-pull  one-shot: pulls the configured model, then exits
+#   backend      FastAPI + embedded ChromaDB (persists to volumes)
+#   frontend     Next.js production server
+#
+# ChromaDB is NOT a service — it is embedded in the backend and
+# persists to the `chroma-data` volume.
+#
+# Values below read from an optional .env file (copy .env.docker.example
+# to .env to override); every one has a sensible built-in default so a
+# bare `docker compose up` works out of the box.
+
+name: contextiq
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      # Exposed on the host for convenience (e.g. `ollama` CLI, debugging).
+      # The backend reaches Ollama over the internal network, not this port.
+      - "${OLLAMA_PORT:-11434}:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    # --- GPU (NVIDIA) — uncomment for a large speedup; needs the
+    # --- NVIDIA Container Toolkit installed on the host.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    # Pull the answer-generation model into the shared model volume,
+    # then exit. `backend` waits for this to finish (see below), so the
+    # very first chat works instead of erroring on a missing model.
+    entrypoint: ["ollama", "pull", "${LLM_MODEL:-llama3.2}"]
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    depends_on:
+      ollama:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      CONTEXTIQ_LLM_MODEL: ${LLM_MODEL:-llama3.2}
+      CONTEXTIQ_EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      CONTEXTIQ_CORS_ORIGINS: ${CONTEXTIQ_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CONTEXTIQ_MAX_UPLOAD_MB: ${CONTEXTIQ_MAX_UPLOAD_MB:-25}
+      CONTEXTIQ_TOP_K: ${CONTEXTIQ_TOP_K:-5}
+      CONTEXTIQ_CHUNK_SIZE: ${CONTEXTIQ_CHUNK_SIZE:-1000}
+      CONTEXTIQ_CHUNK_OVERLAP: ${CONTEXTIQ_CHUNK_OVERLAP:-200}
+    volumes:
+      - chroma-data:/data/chroma          # embedded Chroma DB
+      - documents:/data/documents         # uploaded source files
+      - hf-cache:/data/hf-cache           # embedding-model cache
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Host-reachable API URL, inlined into the client bundle at build.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  chroma-data:
+  documents:
+  hf-cache:

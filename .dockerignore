@@ -1,0 +1,32 @@
+# Build context for Dockerfile.backend (context = repo root).
+# Keep the context tiny and never bake local state or the frontend
+# tree into the backend image.
+
+# Frontend (built by its own image)
+frontend/
+
+# Python caches / local envs
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local runtime state (mounted as volumes at run time instead)
+chroma_db/
+data/
+.dev/
+
+# Tests are not needed in the runtime image
+tests/
+
+# Tooling / docs / VCS
+.git/
+.github/
+.vscode/
+*.md
+docker-compose.yml
+Dockerfile.backend
+.dockerignore
+.env
+.env.*
+desktop.ini

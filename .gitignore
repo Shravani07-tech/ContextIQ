@@ -20,3 +20,6 @@ data/*
 
 # Windows Explorer folder-settings junk
 desktop.ini
+
+# Docker Compose local env (copy from .env.docker.example)
+/.env

@@ -1,0 +1,70 @@
+# Dockerfile.backend
+#
+# Production image for the ContextIQ FastAPI backend. ChromaDB is
+# embedded (chromadb.PersistentClient) — it is NOT a separate service,
+# it persists to a mounted volume. The sentence-transformers embedding
+# model is downloaded on first start into the HF cache volume.
+#
+# Multi-stage: compile/install dependencies in a fuller image, then
+# copy just the virtualenv into a slim runtime.
+
+# ---- builder ---------------------------------------------------------
+FROM python:3.12-slim AS builder
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# build-essential covers any dependency without a prebuilt wheel.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# ---- runtime ---------------------------------------------------------
+FROM python:3.12-slim AS runtime
+
+# libgomp1: OpenMP runtime that torch/onnx wheels load at import time.
+# curl:     used by the container HEALTHCHECK below.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl libgomp1 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    # Container-friendly, volume-backed locations (see docker-compose.yml).
+    CONTEXTIQ_DATA_DIR=/data/documents \
+    CONTEXTIQ_CHROMA_DIR=/data/chroma \
+    HF_HOME=/data/hf-cache \
+    OLLAMA_BASE_URL=http://ollama:11434
+
+WORKDIR /app
+
+# Copy ONLY the backend code — never the frontend or local state.
+COPY config.py rag.py llm.py vector_store.py embedding_model.py ingest.py ./
+COPY api ./api
+
+# Non-root runtime user; owns the writable data locations.
+RUN useradd --create-home --uid 10001 appuser \
+ && mkdir -p /data/documents /data/chroma /data/hf-cache \
+ && chown -R appuser:appuser /data /app
+USER appuser
+
+EXPOSE 8000
+
+# /health always returns HTTP 200 (its JSON `status` field degrades to
+# "degraded" if Chroma/Ollama are unreachable) — so a 200 here is a
+# sound liveness signal for the app process itself. start-period covers
+# the one-time embedding-model load/download on first boot.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
+  CMD curl -fsS http://localhost:8000/health || exit 1
+
+# 0.0.0.0 so the port is reachable from the host and the frontend.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,16 @@
+# Build context for frontend/Dockerfile.
+node_modules
+.next
+.git
+.vscode
+Dockerfile
+.dockerignore
+npm-debug.log*
+
+# Exclude env files so they cannot override the NEXT_PUBLIC_API_URL
+# build arg during `next build`.
+.env
+.env.*
+
+# Test / tooling artifacts not needed for a production build
+coverage
