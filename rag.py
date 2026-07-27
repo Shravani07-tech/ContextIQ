@@ -6,7 +6,7 @@
 # chunks.
 #
 # Kept separate from ingest.py so querying doesn't depend on ingestion
-# logic; app.py will import from here without knowing how retrieval
+# logic; the API layer imports from here without knowing how retrieval
 # works internally.
 #
 # Answer generation works the same way in reverse: retrieved chunks

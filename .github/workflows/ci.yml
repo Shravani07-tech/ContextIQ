@@ -4,7 +4,7 @@ name: CI
 # frontend job needs no backend, and the backend job's unit tests
 # (tests/test_unit.py) mock Ollama and Chroma, so nothing here needs a
 # live model server or a populated vector database. The heavier
-# end-to-end suites (tests/test_api.py, tests/test_app.py) require a
+# end-to-end suite (tests/test_api.py) requires a
 # real Ollama and are run locally, not in CI.
 
 on:

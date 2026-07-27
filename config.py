@@ -2,7 +2,7 @@
 #
 # Centralized configuration for ContextIQ.
 # Keeping all paths, model names, and tunable settings in one place
-# means other modules (ingest.py, rag.py, app.py, api/) never
+# means other modules (ingest.py, rag.py, api/) never
 # hardcode values themselves — they just import from here.
 #
 # Every setting can be overridden with an environment variable

@@ -14,8 +14,6 @@ data/*
 !data/.gitkeep
 !data/zephyra.txt
 
-# Streamlit secrets (none used today, guarded for the future)
-.streamlit/secrets.toml
 
 # Dev-server logs and pidfiles written by run-dev.ps1 / run-dev.sh
 .dev/

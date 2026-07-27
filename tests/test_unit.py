@@ -1,7 +1,7 @@
 # tests/test_unit.py
 #
 # Fast, dependency-light unit tests for the RAG core — the CI-friendly
-# counterpart to test_api.py / test_app.py (which need a live Ollama
+# counterpart to test_api.py (which needs a live Ollama
 # and a populated Chroma DB). Everything external (the Ollama HTTP
 # call, the Chroma collection) is mocked, so these run anywhere Python
 # runs, in milliseconds, with no services and no network.

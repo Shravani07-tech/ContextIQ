@@ -55,7 +55,7 @@ layer wraps but never rewrites.
 ├── ingest.py           # Pipeline: load → chunk → embed → store
 ├── config.py           # Every path, model name, and tunable setting (env-driven)
 ├── frontend/           # Next.js App Router UI (see frontend/ below)
-├── tests/              # test_unit.py (mocked, CI) · test_api.py / test_app.py (live e2e)
+├── tests/              # test_unit.py (mocked, CI) · test_api.py (live e2e)
 ├── requirements.txt    # Pinned Python dependencies
 ├── data/               # Your source documents (demo corpus included)
 └── chroma_db/          # Persistent vector database (generated)
@@ -163,7 +163,6 @@ Requires Ollama running and the demo corpus indexed:
 
 ```bash
 python tests/test_api.py     # every REST endpoint, incl. streaming
-python tests/test_app.py     # full pipeline: index, chat, citations, clear
 ```
 
 ## Continuous integration

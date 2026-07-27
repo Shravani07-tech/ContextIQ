@@ -4,7 +4,6 @@
 # versions the project was built and verified against so installs
 # are reproducible.
 #
-# streamlit                -> web UI (v1.0, retired after the React migration)
 # pypdf                    -> PDF text extraction during ingestion
 # langchain-text-splitters -> recursive text chunking
 # sentence-transformers    -> embedding vectors (BGE model)
@@ -13,7 +12,6 @@
 # fastapi / uvicorn        -> REST API layer (v1.5)
 # python-multipart         -> multipart parsing for POST /upload
 
-streamlit==1.59.0
 pypdf==6.14.2
 langchain-text-splitters==1.1.2
 sentence-transformers==5.6.0
