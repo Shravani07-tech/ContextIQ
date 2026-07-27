@@ -23,3 +23,14 @@ desktop.ini
 
 # Docker Compose local env (copy from .env.docker.example)
 /.env
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
