@@ -4,7 +4,7 @@ All notable changes to ContextIQ are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] — 2026-07-22
+## [1.0.0] — 2026-07-28
 
 First production release. ContextIQ is now a FastAPI backend serving a
 Next.js (React 19) frontend, replacing the original Streamlit app while

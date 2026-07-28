@@ -172,6 +172,13 @@ push and PR: the frontend job lints, tests, and builds; the backend
 job runs the mocked unit suite. Both are self-contained — no live
 Ollama or Chroma is needed — so CI stays fast and deterministic.
 
+## Security
+
+ContextIQ is designed as a **local, single-user** application and the API
+is unauthenticated by design. Run it on `localhost` (or a trusted
+private network) — do not expose the backend to untrusted networks
+without adding authentication in front of it.
+
 ## License
 
 [MIT](LICENSE)

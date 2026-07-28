@@ -1,6 +1,6 @@
 # api/
 #
-# FastAPI layer for ContextIQ (roadmap v1.5, Phase 1).
+# FastAPI layer for ContextIQ.
 #
 # This package contains NO business logic. Every route is a thin
 # wrapper around the existing, untouched modules at the project root

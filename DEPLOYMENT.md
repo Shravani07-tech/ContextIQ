@@ -56,6 +56,10 @@ browser │   http://localhost:3000        http://localhost:8000       │
 - **Optional NVIDIA GPU** — big speedup; see the commented `deploy`
   block in `docker-compose.yml` (needs the NVIDIA Container Toolkit).
 
+> **Security note:** the API is unauthenticated by design (local,
+> single-user). Keep the published ports bound to `localhost` — do not
+> expose the backend to untrusted networks without adding authentication.
+
 ## 4. Configuration
 
 All settings are optional and default sensibly. To override, copy the

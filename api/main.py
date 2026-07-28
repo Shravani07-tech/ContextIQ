@@ -69,12 +69,12 @@ app = FastAPI(
         "database, and ask questions answered strictly from their "
         "content, with per-answer source citations."
     ),
-    version="1.5.0",
+    version="1.0.0",
     openapi_tags=OPENAPI_TAGS,
     lifespan=lifespan,
 )
 
-# The Next.js dev server (v1.5 frontend) calls this API from a
+# The Next.js frontend calls this API from a
 # different origin; without CORS every browser fetch would fail.
 # Origins come from config.py (CONTEXTIQ_CORS_ORIGINS env var).
 app.add_middleware(
