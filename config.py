@@ -57,7 +57,12 @@ EMBEDDING_MODEL_NAME = os.getenv(
 )
 
 # Number of most-relevant chunks to retrieve for each user query.
-TOP_K = _env_int("CONTEXTIQ_TOP_K", 5)
+# Raised from 5 to 8: enough for whole-document questions (e.g. "what is
+# the conclusion?") to reach content that ranks past the first few hits,
+# while staying small enough that CPU-only Ollama inference stays well
+# within its timeout. (Back-matter is dropped at ingestion — see
+# ingest._strip_references — so the real content sits nearer the top.)
+TOP_K = _env_int("CONTEXTIQ_TOP_K", 8)
 
 # Server-side per-file upload limit. The frontend enforces the same
 # number client-side for fast feedback, but THIS is the security

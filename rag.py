@@ -107,16 +107,17 @@ class Retriever:
         if count == 0:
             return []
 
+        query_vec = self.embed_query(query)
         try:
             results = self.collection.query(
-                query_embeddings=[self.embed_query(query)],
+                query_embeddings=[query_vec],
                 n_results=top_k,
                 include=["documents", "metadatas", "distances"],
             )
         except chromadb.errors.NotFoundError:
             self.collection = get_collection()
             results = self.collection.query(
-                query_embeddings=[self.embed_query(query)],
+                query_embeddings=[query_vec],
                 n_results=top_k,
                 include=["documents", "metadatas", "distances"],
             )
@@ -139,7 +140,75 @@ class Retriever:
                     "chunk_text": text,
                 }
             )
+
+        self._ensure_document_head(hits, query_vec)
         return hits
+
+    # How many leading chunks of a document count as its "front matter"
+    # (title, authors, abstract for a paper — chunk-0/1/2).
+    HEAD_CHUNKS = 3
+
+    def _ensure_document_head(self, hits: list[dict], query_vec: list[float]) -> None:
+        """
+        Guarantee the top-matching document's leading chunks are in the
+        results, in place.
+
+        Whole-document questions ("what is the title?", "who are the
+        authors?", "summarize this") embed poorly against the text that
+        answers them — a paper's title does not sit near the phrase
+        "what is the title" in vector space, so those chunks rank far
+        down and never make the top_k. Semantic search alone therefore
+        cannot answer them. Front matter lives in a document's first few
+        chunks by construction, so we fetch them directly (by id) for
+        whichever document the top hit belongs to, score them honestly
+        against the query, and merge any that are missing. Nothing is
+        removed; the LLM just also sees the document's head.
+        """
+        if not hits:
+            return
+        top_doc = hits[0]["filename"]
+        present = {h["chunk_id"] for h in hits}
+        wanted = [f"{top_doc}-{i}" for i in range(self.HEAD_CHUNKS)]
+        missing = [cid for cid in wanted if cid not in present]
+        if not missing:
+            return
+
+        records = self.collection.get(
+            ids=missing, include=["documents", "embeddings", "metadatas"]
+        )
+        q_norm = sum(v * v for v in query_vec) ** 0.5 or 1.0
+        head: list[dict] = []
+        for chunk_id, text, emb, meta in zip(
+            records["ids"],
+            records["documents"],
+            records["embeddings"],
+            records["metadatas"],
+        ):
+            # Cosine similarity, matching the 1 - cosine_distance the
+            # main query path reports, so sources stay comparable.
+            e_norm = sum(v * v for v in emb) ** 0.5 or 1.0
+            similarity = sum(a * b for a, b in zip(query_vec, emb)) / (q_norm * e_norm)
+            head.append(
+                {
+                    "similarity": similarity,
+                    "filename": meta["filename"],
+                    "chunk_id": chunk_id,
+                    # Label the front matter so the model recognises the
+                    # document's title/authors here — a bare heading line
+                    # otherwise reads as ordinary text and the grounded
+                    # prompt makes it answer "I don't know" for "what is
+                    # the title?". The label is prompt-only; the stored
+                    # chunk and the source preview shown in the UI (fetched
+                    # separately from Chroma) are untouched.
+                    "chunk_text": (
+                        "[Document front matter — title, authors, abstract]\n"
+                        + text
+                    ),
+                }
+            )
+        # Front matter first (chunk-0, -1, -2), then the semantic hits.
+        head.sort(key=lambda h: h["chunk_id"])
+        hits[:0] = head
 
 
 def print_results(query: str, results: list[dict]) -> None:

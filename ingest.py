@@ -13,6 +13,7 @@
 
 import logging
 import os
+import re
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
@@ -22,6 +23,28 @@ from embedding_model import get_embedding_model
 from vector_store import save_chunks
 
 logger = logging.getLogger(__name__)
+
+# A standalone "References" / "Bibliography" heading marks the start of a
+# paper's back-matter. Those pages are dense citation text that scores
+# highly against almost any query and crowds the real content out of the
+# top results — so we drop them before chunking.
+_REFERENCES_HEADING = re.compile(
+    r"(?im)^[ \t]*(references|bibliography|works cited)[ \t]*$"
+)
+
+
+def _strip_references(text: str) -> str:
+    """
+    Remove a trailing References/Bibliography section, if present.
+
+    Only a heading in the LATTER HALF of the document is treated as the
+    real back-matter boundary (so an early in-text mention of the word
+    isn't mistaken for it). No such heading -> text returned unchanged.
+    """
+    for match in _REFERENCES_HEADING.finditer(text):
+        if match.start() > len(text) * 0.5:
+            return text[: match.start()]
+    return text
 
 
 def load_txt_file(file_path: str) -> str:
@@ -129,8 +152,9 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
     all_chunks: list[dict] = []
 
     for doc in documents:
-        # split_text returns a list of plain strings for this document.
-        pieces = splitter.split_text(doc["text"])
+        # Drop back-matter (references/bibliography) so it doesn't
+        # dominate retrieval, then split into overlapping chunks.
+        pieces = splitter.split_text(_strip_references(doc["text"]))
 
         # Wrap each string in a dict carrying its provenance:
         # the chunk_id encodes the source filename plus the chunk's
