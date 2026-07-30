@@ -26,15 +26,24 @@ from vector_store import get_collection
 # Grounding instructions sent as the system message on every request.
 # This is what keeps the bot honest: it must answer from the supplied
 # context only, and must say it doesn't know rather than guess.
-SYSTEM_PROMPT = """You are a document assistant.
+#
+# The instructions explicitly allow synthesis/inference from the context
+# (not just verbatim extraction): questions like "what problem does this
+# paper solve?" are answerable from an abstract that describes the
+# problem without ever using the word "problem", and the earlier,
+# stricter wording made the model refuse those. Grounding is preserved —
+# it still answers ONLY from context, uses no outside knowledge, and
+# falls back to the exact "I don't know" line when the answer truly
+# isn't present.
+SYSTEM_PROMPT = """You are a document assistant. Answer the user's question using ONLY the information in the provided context.
 
-Answer ONLY from the provided context.
+You may synthesise, summarise, and draw reasonable conclusions from that context — the answer does not have to appear as a single verbatim sentence. A document's title, authors, purpose, or the problem it addresses can be inferred from its front matter and abstract.
 
-If the answer is not present, reply exactly:
+Only if the context genuinely does not contain the information needed to answer, reply exactly:
 
 'I don't know based on the provided documents.'
 
-Do not invent information."""
+Do not use outside knowledge, and do not invent facts the context does not support."""
 
 
 class Retriever:
