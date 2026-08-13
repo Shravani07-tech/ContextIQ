@@ -3,7 +3,7 @@
 # Every request/response shape the API exposes, in one place. These
 # mirror what the existing backend functions already return (e.g.
 # ChatResponse matches rag.answer_question()'s dict exactly), so the
-# service layer never has to reshape data — it just passes it through.
+# service layer never has to reshape data -- it just passes it through.
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -11,8 +11,15 @@ from pydantic import BaseModel, Field, field_validator
 # --- chat -------------------------------------------------------------------
 
 
+class HistoryMessage(BaseModel):
+    """A single turn in the conversation history sent with a chat request."""
+
+    role: str = Field(description="'user' or 'assistant'")
+    content: str = Field(description="The message text")
+
+
 class ChatRequest(BaseModel):
-    """A single question for the knowledge base."""
+    """A single question for the knowledge base, with optional context."""
 
     question: str = Field(
         ...,
@@ -20,15 +27,43 @@ class ChatRequest(BaseModel):
         json_schema_extra={"example": "How does Zephyra store knowledge?"},
     )
 
+    # Bounded conversation history: at most 6 prior turns (3 user + 3 assistant).
+    # The API layer enforces this so the LLM context window cannot grow unboundedly.
+    history: list[HistoryMessage] = Field(
+        default_factory=list,
+        description=(
+            "Recent conversation history (at most 6 messages). "
+            "Role must be 'user' or 'assistant'. Sent to the LLM as prior context; "
+            "does NOT affect document retrieval."
+        ),
+    )
+
+    # When set, restricts vector retrieval to a single document's chunks.
+    # None / absent means 'All Documents' (retrieve across everything).
+    document_filter: str | None = Field(
+        default=None,
+        description=(
+            "Restrict retrieval to this specific document filename. "
+            "Omit or set null for All-Documents mode."
+        ),
+    )
+
     @field_validator("question")
     @classmethod
     def not_blank(cls, v: str) -> str:
         """Strip and reject empty/whitespace-only questions (same rule
-        the Streamlit UI enforces) — FastAPI turns this into a 422."""
+        the Streamlit UI enforces) -- FastAPI turns this into a 422."""
         v = v.strip()
         if not v:
             raise ValueError("question must not be empty")
         return v
+
+    @field_validator("history")
+    @classmethod
+    def cap_history(cls, v: list[HistoryMessage]) -> list[HistoryMessage]:
+        """Silently trim to the most recent 6 messages so callers that
+        send an unbounded list don't overflow the LLM context window."""
+        return v[-6:] if len(v) > 6 else v
 
 
 class Source(BaseModel):
@@ -42,6 +77,15 @@ class Source(BaseModel):
     preview: str | None = Field(
         default=None,
         description="Leading snippet of the chunk's text, for source previews",
+    )
+    # Citation metadata (populated when available)
+    page: int | None = Field(
+        default=None,
+        description="1-based page number within the source document, if known",
+    )
+    section: str | None = Field(
+        default=None,
+        description="Document section heading the chunk belongs to, if known",
     )
 
 
@@ -62,6 +106,7 @@ class ChatResponse(BaseModel):
                         "filename": "zephyra.txt",
                         "chunk_id": "zephyra.txt-3",
                         "similarity": 0.85,
+                        "page": None,
                     }
                 ],
             }
@@ -73,7 +118,7 @@ class ChatResponse(BaseModel):
 
 
 class FileResult(BaseModel):
-    """Per-file outcome for upload and index operations — errors are
+    """Per-file outcome for upload and index operations -- errors are
     reported per file so one bad PDF never hides the others' success
     (the same policy the ingestion pipeline itself follows)."""
 
@@ -121,7 +166,7 @@ class DeleteDocumentResponse(BaseModel):
 
 
 class StatusResponse(BaseModel):
-    """Knowledge-base status plus the (read-only) pipeline settings —
+    """Knowledge-base status plus the (read-only) pipeline settings --
     the same information the Streamlit sidebar displays today."""
 
     vector_count: int

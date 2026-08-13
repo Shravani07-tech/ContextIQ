@@ -9,6 +9,7 @@ import type {
   DeleteDocumentResponse,
   DocumentsResponse,
   HealthResponse,
+  HistoryMessage,
   IndexResponse,
   Source,
   StatusResponse,
@@ -148,15 +149,22 @@ export const api = {
       body: JSON.stringify({ filenames: filenames ?? null }),
     }),
 
-  /** POST /chat — grounded answer + sources for one question.
+  /** POST /chat -- grounded answer + sources for one question.
       180s timeout: double the worst normal CPU-generation time. */
-  chat: (question: string) =>
+  chat: (
+    question: string,
+    opts?: { history?: HistoryMessage[]; documentFilter?: string | null },
+  ) =>
     request<ChatResponse>(
       "/chat",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({
+          question,
+          history: opts?.history ?? [],
+          document_filter: opts?.documentFilter ?? null,
+        }),
       },
       180_000,
     ),
@@ -183,13 +191,21 @@ export const api = {
       onError: (detail: string) => void;
     },
     signal: AbortSignal,
+    opts?: {
+      history?: HistoryMessage[];
+      documentFilter?: string | null;
+    },
   ): Promise<void> => {
     let response: Response;
     try {
       response = await fetch(`${API_URL}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({
+          question,
+          history: opts?.history ?? [],
+          document_filter: opts?.documentFilter ?? null,
+        }),
         signal,
       });
     } catch {

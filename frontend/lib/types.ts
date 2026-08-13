@@ -34,12 +34,23 @@ export interface Source {
   similarity: number;
   /** Leading snippet of the chunk's text (for expandable previews). */
   preview?: string | null;
+  /** 1-based page number within the source document, if known. */
+  page?: number | null;
+  /** Document section heading, if known. */
+  section?: string | null;
 }
 
 export interface ChatResponse {
   answer: string;
   sources: Source[];
 }
+
+/** One turn of conversation history sent to the backend. */
+export interface HistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 
 // --- chat UI state (not a backend schema — lives here because both
 // hooks/useChat.tsx and multiple chat components need it) ------------------
@@ -84,6 +95,31 @@ export interface DocumentMeta {
   sizeBytes: number;
   chunks: number;
   uploadedAt: number; // epoch ms
+  /**
+   * SHA-256 hash of the raw file bytes, computed in the browser at
+   * upload time using the Web Crypto API. Used for content-based
+   * duplicate detection: a re-uploaded file with a different name but
+   * the same content will be caught by hash comparison, not filename.
+   * Optional — documents uploaded before this field existed (via CLI
+   * or before v1.1.0) simply have no hash entry.
+   */
+  hash?: string;
+}
+
+// --- chat sessions -----------------------------------------------------------
+// Lightweight local conversation management. Sessions are stored in
+// localStorage (key: contextiq.sessions.v1) and survive page refreshes.
+// Nothing is sent to the server — all session state is client-only.
+// Deleting a session never deletes documents; deleting a document never
+// deletes unrelated sessions. References to deleted documents inside
+// older messages remain intact (the filename is still shown).
+export interface ChatSession {
+  id: string;
+  /** Auto-generated from the first user message (≤ 45 chars). */
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number; // epoch ms
+  updatedAt: number; // epoch ms
 }
 
 export interface StatusResponse {

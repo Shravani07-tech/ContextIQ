@@ -1,21 +1,22 @@
 "use client";
 
-// Conversation state + streaming chat, shared through context so the
-// chat area (messages, live streaming bubble) and the right panel
-// (recent sources) read the same conversation without prop drilling.
+// Conversation state + streaming chat + session management.
+// All chat state is shared through context so the chat area,
+// sidebar (session list), and right panel (recent sources) read
+// the same state without prop drilling.
 //
-// Persistence: the conversation is mirrored into sessionStorage, so
-// a page REFRESH restores it but closing the tab clears it — the
-// right privacy posture for a private-documents tool. (The knowledge
-// base itself always persists server-side.)
+// Sessions: each "chat" is a named conversation with its own message
+// history, stored in localStorage via useSessions. Sessions survive
+// page refreshes. Data isolation: deleting a session never affects
+// indexed documents; indexing/deleting documents never affects sessions.
 //
-// Streaming model: `isThinking` is true from send until the FIRST
-// token arrives (the pre-content wait); `isStreaming` is true while
-// tokens are actively arriving. Only one of the two is ever true at
-// once. `streamingContent`/`streamingSources` hold the in-flight
-// answer for live rendering — they're not `ChatMessage`s yet; the
-// answer only becomes a permanent message once it finishes (done,
-// stopped, or errored-with-partial-content).
+// Streaming model: unchanged from v1.0. isThinking = waiting for first
+// token; isStreaming = tokens arriving. Only one is ever true at once.
+//
+// Disambiguation: when a question seems to reference "the document"
+// generically AND 2+ documents are indexed, a picker appears before
+// the question is sent. The existing aggregate-score retrieval in
+// rag.py is the authoritative isolation mechanism; this is a UX assist.
 
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -30,13 +31,43 @@ import {
 import { toast } from "sonner";
 
 import { api } from "@/lib/api";
-import type { ChatMessage, DocumentsResponse, Source } from "@/lib/types";
+import type {
+  ChatMessage,
+  ChatSession,
+  DocumentsResponse,
+  HistoryMessage,
+  Source,
+} from "@/lib/types";
+import { useSessions } from "./useSessions";
 
-const STORAGE_KEY = "contextiq.chat.v1";
+// ---------------------------------------------------------------------------
+// Disambiguation detection
+// ---------------------------------------------------------------------------
 
-interface ChatContextValue {
+const AMBIGUOUS_PATTERNS = [
+  /\bsummar(?:ize|ise|y)\b/i,
+  /\b(?:the\s+)?(?:document|paper|file|report|article|study|thesis|text|publication)\b/i,
+  /\bthis\s+(?:paper|doc(?:ument)?|article|file|report)\b/i,
+  /\bwhat\s+(?:is|are|does)\s+(?:this|the)\s+(?:paper|doc(?:ument)?|article|study)\b/i,
+  /\bauthor(?:s)?\s+of\s+(?:the|this)\b/i,
+  /\btitle\s+of\s+(?:the|this)\b/i,
+  /\blimitation(?:s)?\s+of\s+(?:the|this)\b/i,
+];
+
+function isAmbiguousQuery(question: string): boolean {
+  return AMBIGUOUS_PATTERNS.some((p) => p.test(question));
+}
+
+function now(): string {
+  return new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+export interface DisambiguationPending {
+  question: string;
+}
+
+export interface ChatContextValue {
   messages: ChatMessage[];
-  /** Sources of the most recent assistant answer (right panel). */
   lastSources: Source[];
   isThinking: boolean;
   isStreaming: boolean;
@@ -47,63 +78,64 @@ interface ChatContextValue {
   stopGeneration: () => void;
   regenerate: () => void;
   clearConversation: () => void;
+  // sessions
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+  createNewChat: () => void;
+  switchSession: (id: string) => void;
+  renameSession: (id: string, title: string) => void;
+  deleteSession: (id: string) => void;
+  // disambiguation
+  disambiguationPending: DisambiguationPending | null;
+  resolveDisambiguation: (documentFilter: string | null) => void;
+  cancelDisambiguation: () => void;
+  // document filter / multi-doc selector
+  documentFilter: string | null;
+  setDocumentFilter: (filter: string | null) => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
-function now(): string {
-  return new Date().toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const queryClient = useQueryClient();
+
+  const {
+    sessions,
+    activeSession,
+    activeSessionId,
+    createSession,
+    switchSession: rawSwitch,
+    renameSession,
+    deleteSession: rawDelete,
+    saveMessages,
+  } = useSessions();
 
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingSources, setStreamingSources] = useState<Source[]>([]);
-  // Holds the in-flight stream's abort handle so stopGeneration()
-  // (called from a button, outside runQuery's own scope) can reach
-  // it — same pattern as useUpload's cancelRef.
+  const [disambiguationPending, setDisambiguationPending] =
+    useState<DisambiguationPending | null>(null);
+  // Document selector state: null = All Documents, string = specific filename
+  const [documentFilter, setDocumentFilter] = useState<string | null>(null);
+
   const abortRef = useRef<AbortController | null>(null);
 
-  // --- sessionStorage persistence ---------------------------------------
-  // Restore once after mount (not in the useState initializer: that
-  // would run during SSR/hydration and mismatch the server markup).
-  // The `restored` gate stops the write effect from clobbering the
-  // stored conversation with the initial empty array.
-  const restored = useRef(false);
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (raw) setMessages(JSON.parse(raw) as ChatMessage[]);
-    } catch {
-      // Corrupt/blocked storage — start fresh rather than crash.
-    }
-    restored.current = true;
-  }, []);
-
-  useEffect(() => {
-    if (!restored.current) return;
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-    } catch {
-      // Storage full/blocked — the app still works, just unpersisted.
-    }
-  }, [messages]);
-
-  // Abort any in-flight stream if the provider unmounts mid-answer
-  // (e.g. hot reload during development).
+  // Clean up any in-flight stream on unmount.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  /** Append the finished answer as a permanent message, plus the
-      same empty-knowledge-base guidance the non-streaming version
-      had: the backend answers honestly ("I don't know...") without
-      calling the LLM, but a new user deserves to be told why. */
+  const messages: ChatMessage[] = activeSession?.messages ?? [];
+
+  // Stable proxy to the session store — accepts functional updaters
+  // for React 18 batching safety from async stream callbacks.
+  const setMessages = useCallback(
+    (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+      saveMessages(updater);
+    },
+    [saveMessages],
+  );
+
+  // -------------------------------------------------------------------------
   const finalizeAnswer = useCallback(
     (content: string, sources: Source[]) => {
       setMessages((prev) => [
@@ -131,13 +163,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [queryClient],
+    [queryClient, setMessages],
   );
 
-  /** The shared engine behind sendMessage/regenerate/retry: run the
-      streaming pipeline for one question and manage all the
-      thinking/streaming state around it. Does NOT touch the user
-      bubble — callers decide whether to add one first. */
   const runQuery = useCallback(
     (question: string) => {
       const controller = new AbortController();
@@ -149,6 +177,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       let accumulated = "";
       let sources: Source[] = [];
+
+      // Build bounded history from the current session's messages.
+      // Only user and assistant roles are sent; system messages are UI-only.
+      // Cap at 6 messages (enforced by the backend schema too).
+      const sessionMessages = activeSession?.messages ?? [];
+      const history: HistoryMessage[] = sessionMessages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-6)
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
       api.chatStream(
         question,
@@ -180,9 +217,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setIsStreaming(false);
             setStreamingContent("");
             setStreamingSources([]);
-            // Keep whatever tokens arrived before it broke, rather
-            // than discarding a partial answer the user was already
-            // reading.
             if (accumulated) finalizeAnswer(accumulated, sources);
             setMessages((prev) => [
               ...prev,
@@ -197,15 +231,26 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           },
         },
         controller.signal,
+        { history, documentFilter },
       );
     },
-    [finalizeAnswer],
+    [finalizeAnswer, setMessages, activeSession, documentFilter],
   );
 
+  // -------------------------------------------------------------------------
   const sendMessage = useCallback(
     (question: string) => {
       const trimmed = question.trim();
       if (!trimmed || isThinking || isStreaming) return;
+
+      // Only show disambiguation when no specific document is already selected
+      const docs = queryClient.getQueryData<DocumentsResponse>(["documents"]);
+      const docCount = docs?.documents.length ?? 0;
+      if (!documentFilter && docCount >= 2 && isAmbiguousQuery(trimmed)) {
+        setDisambiguationPending({ question: trimmed });
+        return;
+      }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -217,12 +262,35 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       ]);
       runQuery(trimmed);
     },
-    [isThinking, isStreaming, runQuery],
+    [isThinking, isStreaming, queryClient, setMessages, runQuery, documentFilter],
   );
 
-  /** Stop the in-flight answer. Whatever streamed in so far becomes
-      the final message (not discarded) — matching how stopping a
-      ChatGPT/Claude answer keeps the partial response. */
+  const resolveDisambiguation = useCallback(
+    (documentFilter: string | null) => {
+      const pending = disambiguationPending;
+      setDisambiguationPending(null);
+      if (!pending) return;
+      const finalQuestion = documentFilter
+        ? `${pending.question} (focusing on the document: "${documentFilter}")`
+        : pending.question;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content: pending.question,
+          timestamp: now(),
+        },
+      ]);
+      runQuery(finalQuestion);
+    },
+    [disambiguationPending, setMessages, runQuery],
+  );
+
+  const cancelDisambiguation = useCallback(() => {
+    setDisambiguationPending(null);
+  }, []);
+
   const stopGeneration = useCallback(() => {
     const controller = abortRef.current;
     if (!controller) return;
@@ -240,37 +308,30 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
     setStreamingContent("");
     setStreamingSources([]);
-  }, [streamingContent, streamingSources, finalizeAnswer]);
+  }, [streamingContent, streamingSources, finalizeAnswer, setMessages]);
 
-  /** Re-run the LAST question, replacing its answer in place — the
-      old assistant message (and anything after it, e.g. a stray
-      system notice) is dropped rather than appended twice, matching
-      the ChatGPT/Claude "regenerate replaces" convention. Only ever
-      offered on the latest answer (see MessageBubble). */
   const regenerate = useCallback(() => {
     if (isThinking || isStreaming) return;
     let lastUserIdx = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") {
-        lastUserIdx = i;
-        break;
-      }
+      if (messages[i].role === "user") { lastUserIdx = i; break; }
     }
     if (lastUserIdx === -1) return;
     const question = messages[lastUserIdx].content;
     setMessages(messages.slice(0, lastUserIdx + 1));
     runQuery(question);
-  }, [messages, isThinking, isStreaming, runQuery]);
+  }, [messages, isThinking, isStreaming, runQuery, setMessages]);
 
-  const addSystemMessage = useCallback((content: string) => {
-    setMessages((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), role: "system", content },
-    ]);
-  }, []);
+  const addSystemMessage = useCallback(
+    (content: string) => {
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: "system", content },
+      ]);
+    },
+    [setMessages],
+  );
 
-  /** Start a fresh conversation. Does not touch the knowledge base —
-      only the client-side transcript. */
   const clearConversation = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -279,42 +340,58 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setStreamingContent("");
     setStreamingSources([]);
     setMessages([]);
+  }, [setMessages]);
+
+  // --- Session management wrappers (abort stream before context switch) ---
+  const stopStream = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsThinking(false);
+    setIsStreaming(false);
+    setStreamingContent("");
+    setStreamingSources([]);
   }, []);
 
+  const createNewChat = useCallback(() => {
+    stopStream();
+    createSession();
+  }, [stopStream, createSession]);
+
+  const switchSession = useCallback(
+    (id: string) => { stopStream(); rawSwitch(id); },
+    [stopStream, rawSwitch],
+  );
+
+  const deleteSession = useCallback(
+    (id: string) => { if (id === activeSessionId) stopStream(); rawDelete(id); },
+    [activeSessionId, stopStream, rawDelete],
+  );
+
+  // -------------------------------------------------------------------------
   const lastSources = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
-      const sources = messages[i].sources;
-      if (sources && sources.length > 0) return sources;
+      const s = messages[i].sources;
+      if (s && s.length > 0) return s;
     }
     return [];
   }, [messages]);
 
   const value = useMemo<ChatContextValue>(
     () => ({
-      messages,
-      lastSources,
-      isThinking,
-      isStreaming,
-      streamingContent,
-      streamingSources,
-      sendMessage,
-      addSystemMessage,
-      stopGeneration,
-      regenerate,
-      clearConversation,
+      messages, lastSources, isThinking, isStreaming, streamingContent,
+      streamingSources, sendMessage, addSystemMessage, stopGeneration,
+      regenerate, clearConversation, sessions, activeSessionId,
+      createNewChat, switchSession, renameSession, deleteSession,
+      disambiguationPending, resolveDisambiguation, cancelDisambiguation,
+      documentFilter, setDocumentFilter,
     }),
     [
-      messages,
-      lastSources,
-      isThinking,
-      isStreaming,
-      streamingContent,
-      streamingSources,
-      sendMessage,
-      addSystemMessage,
-      stopGeneration,
-      regenerate,
-      clearConversation,
+      messages, lastSources, isThinking, isStreaming, streamingContent,
+      streamingSources, sendMessage, addSystemMessage, stopGeneration,
+      regenerate, clearConversation, sessions, activeSessionId,
+      createNewChat, switchSession, renameSession, deleteSession,
+      disambiguationPending, resolveDisambiguation, cancelDisambiguation,
+      documentFilter, setDocumentFilter,
     ],
   );
 

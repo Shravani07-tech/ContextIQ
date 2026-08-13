@@ -1,6 +1,6 @@
 # api/services/rag_service.py
 #
-# Injectable service wrapping the two expensive backend objects — the
+# Injectable service wrapping the two expensive backend objects -- the
 # Retriever (embedding model + DB handle) and the LLM client. All
 # retrieval/generation logic stays in the untouched root modules;
 # this class only owns their lifecycle.
@@ -18,7 +18,7 @@ from vector_store import get_collection
 
 logger = logging.getLogger(__name__)
 
-# How much of a cited chunk the API returns as preview text — enough
+# How much of a cited chunk the API returns as preview text -- enough
 # to judge relevance at a glance without shipping whole chunks.
 PREVIEW_CHARS = 320
 
@@ -31,44 +31,85 @@ class RagService:
         self.retriever = Retriever()
         self.llm = LLM()
 
-    def ask(self, question: str) -> dict:
+    def ask(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        document_filter: str | None = None,
+    ) -> dict:
         """
         Answer one question via the existing full RAG pipeline, then
         enrich each cited source with a preview snippet of its chunk.
 
         answer_question() deliberately returns source METADATA only;
         the preview text is fetched here, at the API layer, by chunk
-        id — so the core pipeline stays byte-identical while the API
+        id -- so the core pipeline stays byte-identical while the API
         can power expandable source previews in the UI.
+
+        Args:
+            history:         Bounded conversation history (max 6 turns).
+                             Sent to LLM; does NOT affect retrieval.
+            document_filter: When set, restricts retrieval to this filename.
         """
-        result = answer_question(question, self.retriever, self.llm)
+        result = answer_question(
+            question,
+            self.retriever,
+            self.llm,
+            history=history,
+            document_filter=document_filter,
+        )
         self._enrich_sources(result["sources"])
         return result
 
     def _enrich_sources(self, sources: list[dict]) -> None:
-        """Attach a preview snippet to each source, in place — the
+        """Attach a preview snippet to each source, in place -- the
         same enrichment ask() does, factored out so the streaming
         path can apply it before the sources event goes out."""
         ids = [source["chunk_id"] for source in sources]
         if not ids:
             return
-        records = self.retriever.collection.get(ids=ids, include=["documents"])
+        records = self.retriever.collection.get(
+            ids=ids, include=["documents", "metadatas"]
+        )
         texts = dict(zip(records["ids"], records["documents"]))
+        metas = dict(zip(records["ids"], records["metadatas"]))
         for source in sources:
-            text = texts.get(source["chunk_id"])
+            cid = source["chunk_id"]
+            text = texts.get(cid)
             if text:
                 source["preview"] = text[:PREVIEW_CHARS] + (
-                    "…" if len(text) > PREVIEW_CHARS else ""
+                    "\u2026" if len(text) > PREVIEW_CHARS else ""
                 )
+            # Enrich page/section from stored metadata if not already set
+            meta = metas.get(cid, {})
+            if source.get("page") is None and meta.get("page") is not None:
+                source["page"] = meta["page"]
+            if source.get("section") is None and meta.get("section") is not None:
+                source["section"] = meta["section"]
 
-    def ask_stream(self, question: str) -> Iterator[dict]:
+    def ask_stream(
+        self,
+        question: str,
+        history: list[dict] | None = None,
+        document_filter: str | None = None,
+    ) -> Iterator[dict]:
         """
         Streaming counterpart to ask(): same preview enrichment for
         sources, applied before the "sources" event is yielded rather
-        than after the fact — streaming sends sources to the client
+        than after the fact -- streaming sends sources to the client
         immediately, so enrichment can't happen retroactively.
+
+        Args:
+            history:         Bounded conversation history (max 6 turns).
+            document_filter: Restrict retrieval to one document filename.
         """
-        for event in answer_question_stream(question, self.retriever, self.llm):
+        for event in answer_question_stream(
+            question,
+            self.retriever,
+            self.llm,
+            history=history,
+            document_filter=document_filter,
+        ):
             if event["type"] == "sources":
                 self._enrich_sources(event["sources"])
             yield event

@@ -19,7 +19,7 @@ class LLM:
     Reusable client for chatting with a local Ollama model.
 
     Construction is cheap (no network call happens until generate()),
-    and one instance can serve many requests — the Streamlit app will
+    and one instance can serve many requests -- the Streamlit app will
     later keep a single LLM alive across user questions.
     """
 
@@ -37,15 +37,77 @@ class LLM:
         self.model = model
         self.base_url = base_url
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    # Generation options sent with every request:
+    #   temperature  low -> factual, repeatable grounded answers.
+    #   num_ctx      context window big enough for the retrieved context
+    #                (~2.5k tokens) PLUS conversation history PLUS the answer,
+    #                so Ollama never silently drops the FRONT of the prompt.
+    #   num_predict  hard cap on answer length -> bounds worst-case CPU
+    #                latency. On CPU, generation (~a few tokens/sec) is
+    #                the dominant cost, so a tighter cap plus the "be
+    #                concise" system prompt keeps typical answers well
+    #                under it and roughly halves response time. 512 still
+    #                leaves room for a short list without truncation.
+    _OPTIONS = {"temperature": 0.1, "num_ctx": 4096, "num_predict": 512}
+
+    # Keep the model resident between requests so no call pays a cold
+    # reload -- those reloads were the cause of multi-minute stalls and
+    # the occasional read timeout.
+    _KEEP_ALIVE = "30m"
+
+    def _payload(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        stream: bool,
+        history: list[dict] | None = None,
+    ) -> dict:
+        """
+        Build the /api/chat request body.
+
+        Message order:
+          1. system  -- grounding instructions (always first)
+          2. history -- bounded prior turns in chronological order
+             [{role: "user"|"assistant", content: "..."}]
+             Memory does NOT affect document retrieval; it only gives the
+             LLM awareness of the conversation so it can resolve references
+             like "What are its weaknesses?" after "Summarize the methodology."
+          3. user    -- the current question with retrieved context
+        """
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+        # Inject bounded history between system instructions and the current
+        # question. Cap defensively here (schema already capped upstream).
+        for turn in (history or [])[-6:]:
+            role = turn.get("role", "user")
+            content = turn.get("content", "")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+
+        messages.append({"role": "user", "content": user_prompt})
+
+        return {
+            "model": self.model,
+            "messages": messages,
+            "stream": stream,
+            "options": self._OPTIONS,
+            "keep_alive": self._KEEP_ALIVE,
+        }
+
+    def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[dict] | None = None,
+    ) -> str:
         """
         Send one chat request to Ollama and return the reply text.
 
-        Uses Ollama's /api/chat endpoint with two messages:
-          - a "system" message carrying the grounding instructions
-            (how the model must behave), and
-          - a "user" message carrying the actual content (retrieved
-            context + question).
+        Uses Ollama's /api/chat endpoint with:
+          - a "system" message carrying the grounding instructions,
+          - optional prior conversation history for context continuity,
+          - a "user" message carrying the retrieved context + question.
         Keeping instructions in the system role makes the model treat
         them as rules rather than as part of the question.
 
@@ -57,15 +119,7 @@ class LLM:
         """
         response = requests.post(
             f"{self.base_url}/api/chat",
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "stream": False,
-                "options": {"temperature": 0.1},
-            },
+            json=self._payload(system_prompt, user_prompt, stream=False, history=history),
             # Local generation on CPU can be slow for long contexts,
             # so allow generous time before giving up.
             timeout=300,
@@ -73,7 +127,12 @@ class LLM:
         response.raise_for_status()
         return response.json()["message"]["content"]
 
-    def generate_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+    def generate_stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        history: list[dict] | None = None,
+    ) -> Iterator[str]:
         """
         Same request as generate(), but stream=True: Ollama responds
         with one newline-delimited JSON object per token (or small
@@ -81,7 +140,7 @@ class LLM:
         Yields each text delta as it arrives.
 
         The connection is closed in `finally` regardless of how this
-        generator's iteration ends — including a caller abandoning it
+        generator's iteration ends -- including a caller abandoning it
         partway through (e.g. the client disconnected and the SSE
         route generator got torn down). Closing the underlying
         response tells Ollama the request is no longer wanted, so it
@@ -90,15 +149,7 @@ class LLM:
         """
         response = requests.post(
             f"{self.base_url}/api/chat",
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "stream": True,
-                "options": {"temperature": 0.1},
-            },
+            json=self._payload(system_prompt, user_prompt, stream=True, history=history),
             stream=True,
             timeout=300,
         )
