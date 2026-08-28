@@ -39,6 +39,11 @@ function SourceRow({ source }: { source: Source }) {
         <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 font-mono text-xs text-muted-foreground">
           chunk {chunkNumber(source.chunk_id)}
         </span>
+        {source.page !== undefined && source.page !== null && (
+          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 font-mono text-xs text-muted-foreground">
+            page {source.page}
+          </span>
+        )}
         <SimilarityBadge score={source.similarity} />
         {expandable && (
           <ChevronDown

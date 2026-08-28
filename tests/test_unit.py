@@ -430,7 +430,30 @@ class ChunkDocumentsTests(unittest.TestCase):
         self.assertEqual(chunks[1]["chunk_id"], "doc.txt-1")
         for chunk in chunks:
             self.assertEqual(chunk["filename"], "doc.txt")
+            self.assertEqual(chunk["document_id"], "doc.txt")
             self.assertTrue(chunk["chunk_text"].strip())
+
+    def test_document_id_is_filename(self):
+        docs = [{"filename": "doc.txt", "text": "Hello world"}]
+        chunks = chunk_documents(docs)
+        self.assertEqual(chunks[0]["document_id"], "doc.txt")
+
+    def test_pdf_preserves_page_metadata(self):
+        docs = [{
+            "filename": "doc.pdf",
+            "text": "Page 1 content\nPage 2 content",
+            "pages": [(1, "Page 1 content"), (2, "Page 2 content")]
+        }]
+        chunks = chunk_documents(docs)
+        self.assertEqual(chunks[0]["page"], 1)
+        self.assertEqual(chunks[1]["page"], 2)
+        self.assertEqual(chunks[0]["document_id"], "doc.pdf")
+        self.assertEqual(chunks[1]["document_id"], "doc.pdf")
+
+    def test_txt_page_metadata_is_none(self):
+        docs = [{"filename": "doc.txt", "text": "Line 1\nLine 2", "pages": None}]
+        chunks = chunk_documents(docs)
+        self.assertIsNone(chunks[0]["page"])
 
 
 class DocumentBoundarySelectionTests(unittest.TestCase):

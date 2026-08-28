@@ -38,6 +38,8 @@ export interface Source {
   page?: number | null;
   /** Document section heading, if known. */
   section?: string | null;
+  /** Unique document identifier. */
+  document_id?: string | null;
 }
 
 export interface ChatResponse {
@@ -45,10 +47,16 @@ export interface ChatResponse {
   sources: Source[];
 }
 
-/** One turn of conversation history sent to the backend. */
 export interface HistoryMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+/** Research Mode: synthesis across all documents */
+export interface ResearchResponse {
+  answer: string;
+  sources: Source[];
+  doc_count: number;
 }
 
 

@@ -59,11 +59,27 @@ def save_chunks(chunks: list[dict]) -> int:
     if filenames:
         collection.delete(where={"filename": {"$in": filenames}})
 
+    def _meta(chunk: dict) -> dict:
+        """Build the stored metadata dict for one chunk."""
+        meta: dict = {"filename": chunk["filename"]}
+        # Store page number for PDF chunks (None for TXT — Chroma requires
+        # that None values be omitted entirely rather than stored as null).
+        page = chunk.get("page")
+        if page is not None:
+            meta["page"] = int(page)
+        section = chunk.get("section")
+        if section:
+            meta["section"] = str(section)
+        document_id = chunk.get("document_id")
+        if document_id:
+            meta["document_id"] = str(document_id)
+        return meta
+
     collection.upsert(
         ids=[chunk["chunk_id"] for chunk in chunks],
         embeddings=[chunk["embedding"] for chunk in chunks],
         documents=[chunk["chunk_text"] for chunk in chunks],
-        metadatas=[{"filename": chunk["filename"]} for chunk in chunks],
+        metadatas=[_meta(chunk) for chunk in chunks],
     )
     return collection.count()
 

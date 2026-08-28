@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # highly against almost any query and crowds the real content out of the
 # top results — so we drop them before chunking.
 _REFERENCES_HEADING = re.compile(
-    r"(?im)^[ \t]*(references|bibliography|works cited)[ \t]*$"
+    r"(?im)^[ \t]*(?:\d+\.|[IVXLCDM]+\.)?[ \t]*(references|bibliography|works cited)(?:[ \t]+and[ \t]+(?:references|bibliography|works cited))?[ \t]*$"
 )
 
 
@@ -59,23 +59,21 @@ def load_txt_file(file_path: str) -> str:
         return f.read()
 
 
-def load_pdf_file(file_path: str) -> str:
+def load_pdf_file(file_path: str) -> list[tuple[int, str]]:
     """
-    Read a .pdf file and return its full text content as a string.
+    Read a .pdf file and return a list of (1-based page number, text) tuples.
 
-    Uses pypdf's PdfReader to open the file, then loops over every
-    page and extracts its text, joining all pages together with
-    newlines. If a page fails to extract text (some PDFs have pages
-    with no extractable text, e.g. scanned images), that page is
-    simply skipped rather than failing the whole document.
+    Each page's text is returned separately (not concatenated) so
+    downstream chunking can track which page each chunk originated from.
+    Pages with no extractable text (e.g. scanned images) are skipped.
     """
     reader = PdfReader(file_path)
-    page_texts = []
-    for page in reader.pages:
+    pages: list[tuple[int, str]] = []
+    for page_num, page in enumerate(reader.pages, 1):
         text = page.extract_text()
-        if text:
-            page_texts.append(text)
-    return "\n".join(page_texts)
+        if text and text.strip():
+            pages.append((page_num, text))
+    return pages
 
 
 def load_documents(data_dir: str = DATA_DIR) -> list[dict]:
@@ -83,7 +81,11 @@ def load_documents(data_dir: str = DATA_DIR) -> list[dict]:
     Load every .pdf and .txt file found in `data_dir`.
 
     Returns a list of documents, where each document is a dict:
-        {"filename": <str>, "text": <str>}
+        {"filename": <str>, "text": <str>, "pages": list[tuple[int, str]] | None}
+
+    For PDF files, "pages" contains (page_num, page_text) pairs so
+    chunk_documents() can attach page numbers. For TXT files, "pages"
+    is None (no page concept).
 
     Errors are handled gracefully per-file: if one file fails to
     load (e.g. a corrupted PDF), the error is logged and the loop
@@ -104,15 +106,27 @@ def load_documents(data_dir: str = DATA_DIR) -> list[dict]:
         try:
             if lower_name.endswith(".txt"):
                 text = load_txt_file(file_path)
+                documents.append({
+                    "filename": filename,
+                    "text": text,
+                    "pages": None,  # TXT: no page numbers
+                })
+                logger.info("Loaded '%s': %d characters extracted",
+                            filename, len(text))
+
             elif lower_name.endswith(".pdf"):
-                text = load_pdf_file(file_path)
+                pages = load_pdf_file(file_path)
+                full_text = "\n".join(text for _, text in pages)
+                documents.append({
+                    "filename": filename,
+                    "text": full_text,
+                    "pages": pages,  # PDF: [(page_num, text), ...]
+                })
+                logger.info("Loaded '%s': %d pages, %d characters extracted",
+                            filename, len(pages), len(full_text))
             else:
                 # Not a supported file type — ignore it silently.
                 continue
-
-            documents.append({"filename": filename, "text": text})
-            logger.info("Loaded '%s': %d characters extracted",
-                        filename, len(text))
 
         except Exception:
             # Broad on purpose: whatever goes wrong with one file
@@ -130,20 +144,26 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
 
     Args:
         documents: List of dicts produced by load_documents(), each
-            shaped {"filename": <str>, "text": <str>}.
+            shaped {"filename": <str>, "text": <str>, "pages": ...}.
 
     Returns:
         A flat list of chunk dicts, each shaped:
-            {"chunk_id": <str>, "filename": <str>, "chunk_text": <str>}
+            {
+                "chunk_id":   <str>,
+                "filename":   <str>,
+                "chunk_text": <str>,
+                "page":       <int | None>,   # 1-based page number (PDF only)
+                "section":    <None>,          # reserved for future use
+            }
 
-    Why chunking: LLM context windows and embedding models work best
-    on small, focused pieces of text. RecursiveCharacterTextSplitter
-    tries to split on natural boundaries (paragraphs, then sentences,
-    then words) before resorting to hard character cuts, and the
-    overlap ensures a sentence straddling a boundary still appears
-    complete in at least one chunk.
+    For PDFs: chunks are split page-by-page so each chunk's page number
+    is unambiguous. The text splitter is still applied per page to handle
+    long pages gracefully. The references/bibliography stripper is applied
+    to the full document text to identify the cutoff, then only pages
+    before the cutoff are chunked.
+
+    For TXT files: page is always None.
     """
-    # One splitter instance is reused for every document.
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
@@ -152,23 +172,54 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
     all_chunks: list[dict] = []
 
     for doc in documents:
-        # Drop back-matter (references/bibliography) so it doesn't
-        # dominate retrieval, then split into overlapping chunks.
-        pieces = splitter.split_text(_strip_references(doc["text"]))
+        filename = doc["filename"]
+        pages_data = doc.get("pages")
 
-        # Wrap each string in a dict carrying its provenance:
-        # the chunk_id encodes the source filename plus the chunk's
-        # position, so any chunk can be traced back to its origin.
-        for i, piece in enumerate(pieces):
-            all_chunks.append(
-                {
-                    "chunk_id": f"{doc['filename']}-{i}",
-                    "filename": doc["filename"],
+        if pages_data is not None:
+            # PDF: chunk per-page to preserve page numbers.
+            # Apply reference stripping on the full text to find the cutoff.
+            full_text = doc["text"]
+            stripped = _strip_references(full_text)
+            stripped_len = len(stripped)
+            char_count = 0
+
+            chunk_idx = 0
+            for page_num, page_text in pages_data:
+                # Determine if this page falls before the references cutoff.
+                # We track character position through the document.
+                if char_count >= stripped_len:
+                    break  # This page is in the back-matter — skip it.
+
+                page_pieces = splitter.split_text(page_text)
+                for piece in page_pieces:
+                    all_chunks.append({
+                        "chunk_id": f"{filename}-{chunk_idx}",
+                        "filename": filename,
+                        "document_id": filename,
+                        "chunk_text": piece,
+                        "page": page_num,
+                        "section": None,
+                    })
+                    chunk_idx += 1
+
+                char_count += len(page_text) + 1  # +1 for the joining newline
+
+            logger.info("Chunked '%s': %d chunk(s) (PDF, page-aware)", filename, chunk_idx)
+
+        else:
+            # TXT: chunk the full text without page tracking.
+            pieces = splitter.split_text(_strip_references(doc["text"]))
+            for i, piece in enumerate(pieces):
+                all_chunks.append({
+                    "chunk_id": f"{filename}-{i}",
+                    "filename": filename,
+                    "document_id": filename,
                     "chunk_text": piece,
-                }
-            )
+                    "page": None,
+                    "section": None,
+                })
 
-        logger.info("Chunked '%s': %d chunk(s)", doc["filename"], len(pieces))
+            logger.info("Chunked '%s': %d chunk(s)", filename, len(pieces))
 
     return all_chunks
 
@@ -179,7 +230,7 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
 
     Args:
         chunks: List of chunk dicts produced by chunk_documents(), each
-            shaped {"chunk_id": <str>, "filename": <str>, "chunk_text": <str>}.
+            shaped {"chunk_id", "filename", "chunk_text", "page", "section"}.
 
     Returns:
         The same list of dicts, each with a new "embedding" key holding
@@ -211,7 +262,7 @@ def ingest_file(file_path: str) -> int:
     """
     Run the full pipeline (load -> chunk -> embed -> save) for ONE file.
 
-    Used by the Streamlit UI when a user uploads a single document —
+    Used by the API when a user uploads a single document —
     unlike main(), which re-processes the whole data/ folder. Reuses
     the exact same pipeline functions, just scoped to one file.
 
@@ -224,12 +275,14 @@ def ingest_file(file_path: str) -> int:
 
     if lower_name.endswith(".txt"):
         text = load_txt_file(file_path)
+        document = {"filename": filename, "text": text, "pages": None}
     elif lower_name.endswith(".pdf"):
-        text = load_pdf_file(file_path)
+        pages = load_pdf_file(file_path)
+        full_text = "\n".join(text for _, text in pages)
+        document = {"filename": filename, "text": full_text, "pages": pages}
     else:
         raise ValueError(f"Unsupported file type: {filename}")
 
-    document = {"filename": filename, "text": text}
     chunks = embed_chunks(chunk_documents([document]))
     if not chunks:
         return 0

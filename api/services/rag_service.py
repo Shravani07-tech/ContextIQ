@@ -80,12 +80,23 @@ class RagService:
                 source["preview"] = text[:PREVIEW_CHARS] + (
                     "\u2026" if len(text) > PREVIEW_CHARS else ""
                 )
-            # Enrich page/section from stored metadata if not already set
+            # Enrich page/section/document_id from stored metadata if not already set
             meta = metas.get(cid, {})
             if source.get("page") is None and meta.get("page") is not None:
                 source["page"] = meta["page"]
             if source.get("section") is None and meta.get("section") is not None:
                 source["section"] = meta["section"]
+            if source.get("document_id") is None and meta.get("document_id") is not None:
+                source["document_id"] = meta["document_id"]
+
+    def enrich_sources(self, sources: list[dict]) -> list[dict]:
+        """Public variant of _enrich_sources: enriches sources and returns them.
+
+        Used by the research router which needs the return value.
+        In-place mutation still applies; the return allows method chaining.
+        """
+        self._enrich_sources(sources)
+        return sources
 
     def ask_stream(
         self,

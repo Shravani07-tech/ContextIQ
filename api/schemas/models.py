@@ -87,6 +87,10 @@ class Source(BaseModel):
         default=None,
         description="Document section heading the chunk belongs to, if known",
     )
+    document_id: str | None = Field(
+        default=None,
+        description="Unique document identifier",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -112,6 +116,43 @@ class ChatResponse(BaseModel):
             }
         }
     }
+
+
+# --- research ----------------------------------------------------------------
+
+
+class ResearchRequest(BaseModel):
+    """A research question to synthesize across ALL indexed documents."""
+
+    question: str = Field(
+        ...,
+        description="Research question synthesized across all documents",
+        json_schema_extra={"example": "What are the key themes across all documents?"},
+    )
+
+    @field_validator("question")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("question must not be empty")
+        return v
+
+
+class ResearchResponse(BaseModel):
+    """Structured synthesis across multiple documents."""
+
+    answer: str = Field(
+        description="Structured synthesis in markdown (Executive Summary, "
+        "Document Findings, Cross-Document Comparison, Differences, Gaps)"
+    )
+    sources: list[Source] = Field(
+        description="All evidence chunks used, from multiple documents"
+    )
+    doc_count: int = Field(
+        description="Number of distinct documents that contributed evidence",
+        default=0,
+    )
 
 
 # --- documents / ingestion ---------------------------------------------------

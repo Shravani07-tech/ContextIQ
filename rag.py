@@ -16,12 +16,13 @@
 
 from collections.abc import Iterator
 
-import chromadb.errors
-
-from config import BGE_QUERY_PREFIX, TOP_K
-from embedding_model import get_embedding_model
+from config import TOP_K
 from llm import LLM
-from vector_store import get_collection
+from retrieval import HybridRetriever
+
+# Backward-compatibility alias: code that imports "from rag import Retriever"
+# (including tests) continues to work; new code should use HybridRetriever.
+Retriever = HybridRetriever
 
 # Grounding instructions sent as the system message on every request.
 # This is what keeps the bot honest: it must answer from the supplied
@@ -47,268 +48,6 @@ SYSTEM_PROMPT = """You are ContextIQ, a professional document assistant. Answer 
 - Never use outside knowledge, and never invent facts the context does not support."""
 
 
-class Retriever:
-    """
-    Reusable semantic retriever over the Chroma knowledge base.
-
-    Loads the embedding model and opens the database ONCE at
-    construction, so a single Retriever instance can serve many
-    queries cheaply (important later, when the Streamlit app keeps
-    one instance alive across user questions).
-    """
-
-    def __init__(self) -> None:
-        """
-        Get the shared embedding model and open the vector database.
-
-        The model comes from embedding_model.py's process-wide
-        singleton -- the SAME instance ingest.py uses to embed chunks
-        at indexing time, not just the same model name. Vectors from
-        different models (or even different loaded instances of
-        weights that drifted) would live in incompatible spaces, so
-        sharing the instance is what keeps similarity scores
-        meaningful; sharing it also means a process never holds two
-        ~130MB copies of the model in memory at once.
-        """
-        self.model = get_embedding_model()
-        self.collection = get_collection()
-
-    def embed_query(self, query: str) -> list[float]:
-        """
-        Convert a user query into an embedding vector.
-
-        BGE models were trained so that short search queries get an
-        instruction prefix before embedding (documents do not). Adding
-        it here measurably improves retrieval quality while keeping
-        the stored chunk vectors untouched.
-        """
-        vector = self.model.encode(BGE_QUERY_PREFIX + query)
-        return vector.tolist()
-
-    def retrieve(
-        self,
-        query: str,
-        top_k: int = TOP_K,
-        document_filter: str | None = None,
-    ) -> list[dict]:
-        """
-        Return the top_k chunks most relevant to the query.
-
-        Args:
-            query:           The user's question.
-            top_k:           Maximum number of chunks to return.
-            document_filter: When set, restrict retrieval to this filename only.
-                             None means retrieve across ALL indexed documents.
-
-        Each result dict contains:
-            similarity  -> float in [0, 1], higher = more relevant
-            filename    -> source document the chunk came from
-            chunk_id    -> unique id of the chunk in the database
-            chunk_text  -> the chunk's actual text
-
-        How it works: the query is embedded, then Chroma performs a
-        nearest-neighbour search against the stored chunk vectors.
-        The collection uses cosine DISTANCE (0 = identical), so we
-        convert to a more intuitive similarity via 1 - distance.
-
-        Document filtering: when document_filter is provided, only
-        chunks whose metadata['filename'] matches are returned.
-        This enforces hard document isolation in Selected-Document mode.
-        """
-        # The collection handle is bound to a specific Chroma
-        # collection id at construction time. If another process
-        # (a CLI reindex, a test run) deleted and recreated it since,
-        # that id no longer exists -- reopen by name once and retry
-        # rather than surfacing a crash for what's really just a
-        # cache gone stale.
-        try:
-            count = self.collection.count()
-        except chromadb.errors.NotFoundError:
-            self.collection = get_collection()
-            count = self.collection.count()
-
-        # An empty database can't answer anything -- return early
-        # instead of letting Chroma raise on n_results > 0 hits.
-        if count == 0:
-            return []
-
-        # When filtering to a specific document, verify it actually exists
-        # before querying -- prevents spurious empty results for typos or
-        # deleted documents.
-        if document_filter:
-            filter_clause = {"filename": document_filter}
-            # Count chunks for this specific document
-            try:
-                doc_records = self.collection.get(
-                    where=filter_clause, include=[], limit=1
-                )
-                if not doc_records["ids"]:
-                    return []  # Document does not exist -- honest empty result
-            except chromadb.errors.NotFoundError:
-                self.collection = get_collection()
-                return []
-        else:
-            filter_clause = None
-
-        query_vec = self.embed_query(query)
-        try:
-            query_kwargs: dict = dict(
-                query_embeddings=[query_vec],
-                n_results=top_k,
-                include=["documents", "metadatas", "distances"],
-            )
-            if filter_clause:
-                query_kwargs["where"] = filter_clause
-
-            results = self.collection.query(**query_kwargs)
-        except chromadb.errors.NotFoundError:
-            self.collection = get_collection()
-            results = self.collection.query(**query_kwargs)
-
-        # Chroma returns parallel lists (one entry per query; we sent
-        # one query, hence the [0]s). Zip them back into one dict per
-        # retrieved chunk.
-        hits: list[dict] = []
-        for chunk_id, text, meta, distance in zip(
-            results["ids"][0],
-            results["documents"][0],
-            results["metadatas"][0],
-            results["distances"][0],
-        ):
-            hits.append(
-                {
-                    "similarity": 1.0 - distance,
-                    "filename": meta["filename"],
-                    "chunk_id": chunk_id,
-                    "chunk_text": text,
-                    # Citation metadata (populated if stored during ingestion)
-                    "page": meta.get("page"),
-                    "section": meta.get("section"),
-                }
-            )
-
-        self._ensure_document_boundaries(hits, query_vec, document_filter)
-        return hits
-
-    # A document's opening chunks are its front matter (title, authors,
-    # abstract); its final chunks are its closing sections (conclusion,
-    # limitations, future work). Whole-document questions target one or
-    # the other, so both boundaries are guaranteed into the context.
-    #
-    # Benchmarked defaults (Phase 2/3): TOP_K=4, HEAD=2, TAIL=1.
-    # These values reduced prompt tokens by ~18% with no observed quality loss.
-    HEAD_CHUNKS = 2
-    TAIL_CHUNKS = 1
-    _HEAD_LABEL = "[Document front matter]\n"
-    _TAIL_LABEL = "[Document closing section]\n"
-
-    def _ensure_document_boundaries(
-        self,
-        hits: list[dict],
-        query_vec: list[float],
-        document_filter: str | None = None,
-    ) -> None:
-        """
-        Guarantee the dominant document's opening AND closing chunks are
-        in the results, in place.
-
-        Whole-document questions ("what is the title?", "who are the
-        authors?", "what is the conclusion?", "what future work is
-        suggested?") embed poorly against the text that answers them --
-        a title does not sit near "what is the title" in vector space.
-        We fetch boundary chunks directly (by id) for whichever document
-        dominates the retrieved set, score them honestly, label them,
-        and merge any that are missing.
-
-        DOCUMENT SELECTION -- root-cause fix for cross-document
-        contamination:
-
-        We no longer anchor on hits[0] (the single top-scoring chunk).
-        When multiple documents are indexed, the top-1 chunk may belong
-        to a different document than the one the user is actually asking
-        about -- especially for whole-document queries whose phrasing
-        does not match any specific chunk well.
-
-        Instead we select the document with the HIGHEST AGGREGATE
-        similarity score across all retrieved chunks: whichever document
-        contributed the most relevant content in total is the one whose
-        boundaries we inject. This is robust to the case where a single
-        chunk from document B outranks all chunks from document A, while
-        document A dominates the rest of the result set.
-
-        When document_filter is set, boundaries are ONLY injected for
-        that document, enforcing strict document isolation.
-        """
-        if not hits:
-            return
-
-        # In single-document filter mode, the anchor is always the filtered doc.
-        if document_filter:
-            top_doc = document_filter
-        else:
-            # Aggregate similarity per document across all retrieved chunks.
-            doc_scores: dict[str, float] = {}
-            for h in hits:
-                doc_scores[h["filename"]] = (
-                    doc_scores.get(h["filename"], 0.0) + h["similarity"]
-                )
-            top_doc = max(doc_scores, key=lambda d: doc_scores[d])
-
-        # Chunk ids are "<filename>-<n>"; find this document's index range.
-        all_ids = self.collection.get(where={"filename": top_doc}, include=[])[
-            "ids"
-        ]
-        indices = sorted(
-            int(cid.rsplit("-", 1)[1])
-            for cid in all_ids
-            if cid.rsplit("-", 1)[1].isdigit()
-        )
-        if not indices:
-            return
-
-        head_idx = set(indices[: self.HEAD_CHUNKS])
-        tail_idx = set(indices[-self.TAIL_CHUNKS :]) - head_idx  # tiny docs: head wins
-        labels = {f"{top_doc}-{i}": self._HEAD_LABEL for i in head_idx}
-        labels.update({f"{top_doc}-{i}": self._TAIL_LABEL for i in tail_idx})
-
-        present = {h["chunk_id"] for h in hits}
-        missing = [cid for cid in labels if cid not in present]
-        if not missing:
-            return
-
-        records = self.collection.get(
-            ids=missing, include=["documents", "embeddings", "metadatas"]
-        )
-        q_norm = sum(v * v for v in query_vec) ** 0.5 or 1.0
-        head_hits: list[dict] = []
-        tail_hits: list[dict] = []
-        for chunk_id, text, emb, meta in zip(
-            records["ids"],
-            records["documents"],
-            records["embeddings"],
-            records["metadatas"],
-        ):
-            # Cosine similarity, matching the 1 - cosine_distance the main
-            # query path reports, so sources stay comparable.
-            e_norm = sum(v * v for v in emb) ** 0.5 or 1.0
-            similarity = sum(a * b for a, b in zip(query_vec, emb)) / (q_norm * e_norm)
-            entry = {
-                "similarity": similarity,
-                "filename": meta["filename"],
-                "chunk_id": chunk_id,
-                # Labels are prompt-only; the stored chunk and the source
-                # preview shown in the UI (fetched separately) are untouched.
-                "chunk_text": labels[chunk_id] + text,
-                "page": meta.get("page"),
-                "section": meta.get("section"),
-            }
-            idx = int(chunk_id.rsplit("-", 1)[1])
-            (head_hits if idx in head_idx else tail_hits).append(entry)
-
-        head_hits.sort(key=lambda h: int(h["chunk_id"].rsplit("-", 1)[1]))
-        tail_hits.sort(key=lambda h: int(h["chunk_id"].rsplit("-", 1)[1]))
-        hits[:0] = head_hits      # opening first
-        hits.extend(tail_hits)    # closing last
 
 
 def print_results(query: str, results: list[dict]) -> None:
@@ -402,6 +141,7 @@ def answer_question(
             "similarity": chunk["similarity"],
             "page": chunk.get("page"),
             "section": chunk.get("section"),
+            "document_id": chunk.get("document_id"),
         }
         for chunk in chunks
     ]
@@ -445,6 +185,7 @@ def answer_question_stream(
             "similarity": chunk["similarity"],
             "page": chunk.get("page"),
             "section": chunk.get("section"),
+            "document_id": chunk.get("document_id"),
         }
         for chunk in chunks
     ]
