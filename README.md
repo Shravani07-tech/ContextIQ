@@ -10,26 +10,30 @@ your machine (no cloud APIs, no data leaves your computer).
 
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20Ollama-blue)
 
+## Features (v1.0.0 Release)
+
+- **Hybrid Retrieval**: Combines semantic vector retrieval (ChromaDB) with lexical keyword matching (BM25 via `rank-bm25`) fused via Reciprocal Rank Fusion (RRF, $k=60$) for higher retrieval accuracy.
+- **Cross-Encoder Reranking**: Candidate passages are reranked using a lightweight local `cross-encoder/ms-marco-MiniLM-L-2-v2` neural model (degrades gracefully to vector similarity on low-resource hardware).
+- **Page-Aware PDF Ingestion**: Extracts and preserves 1-based page numbers from PDF files, displaying page badges in source citations.
+- **Multi-Document Research Mode**: Synthesizes structured markdown summaries across all indexed documents using a single LLM call to compare findings, note differences, and flag research gaps.
+- **Dynamic Frontend**: Modern responsive Chat UI featuring a "Chat | Research" mode toggle, active document filter dropdown, source expansion cards, and copy/regenerate buttons.
+
 ## How it works
 
 ```
                  INGESTION                            QUERY
 data/*.pdf|txt ──► load ──► chunk ──► embed ──► Chroma DB
                                                     ▲
-user question ──► embed query ──► top-5 similar ────┘
-                                       │
-                          prompt (context + question)
-                                       │
-                                       ▼
-                              Ollama (llama3.2)
-                                       │
-                                       ▼
-                    grounded answer + sources  (streamed)
+user question ──► embed query ──► Vector Top-8 ─────┼──► RRF Fusion ──► Rerank ──► Top-4 ──► Ollama (llama3.2)
+              ──► tokenize query ──► BM25 Top-8 ────┘
 ```
 
 - Documents are split into 1000-character chunks (200 overlap) and
   embedded with `BAAI/bge-small-en-v1.5` (384-dim vectors).
 - Vectors persist in a local Chroma database (cosine similarity).
+- BM25 indices are cached at the class level and invalidated automatically on document upload/deletion.
+- Candidate chunks are fetched independently up to `TOP_K * 2` from both paths and merged.
+- Cross-encoder scores the candidates and selects the top `TOP_K` (default 4).
 - Answers come from a local Ollama model, instructed to answer only
   from the retrieved context and to say "I don't know" otherwise.
 - The answer streams over Server-Sent Events, so tokens appear as the

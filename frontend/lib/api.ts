@@ -271,4 +271,78 @@ export const api = {
       `/documents/${encodeURIComponent(filename)}`,
       { method: "DELETE" },
     ),
+
+  /**
+   * POST /research/stream — research synthesis across ALL documents.
+   *
+   * Same SSE event format as chatStream, with an extra doc_count field
+   * on the sources event indicating how many documents contributed.
+   */
+  researchStream: async (
+    question: string,
+    callbacks: {
+      onSources: (sources: Source[], docCount: number) => void;
+      onToken: (text: string) => void;
+      onDone: () => void;
+      onError: (detail: string) => void;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}/research/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+        signal,
+      });
+    } catch {
+      if (signal.aborted) return;
+      callbacks.onError("Backend is unreachable. Is the API running?");
+      return;
+    }
+
+    if (!response.ok || !response.body) {
+      callbacks.onError(errorDetail(await response.text(), response.status));
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sepIndex: number;
+        while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+          const frame = buffer.slice(0, sepIndex);
+          buffer = buffer.slice(sepIndex + 2);
+          const dataLine = frame
+            .split("\n")
+            .find((line) => line.startsWith("data: "));
+          if (!dataLine) continue;
+
+          const event = JSON.parse(dataLine.slice("data: ".length));
+          if (event.type === "sources")
+            callbacks.onSources(event.sources, event.doc_count ?? 0);
+          else if (event.type === "token") callbacks.onToken(event.text);
+          else if (event.type === "done") {
+            callbacks.onDone();
+            return;
+          } else if (event.type === "error") {
+            callbacks.onError(event.detail);
+            return;
+          }
+        }
+      }
+      callbacks.onDone();
+    } catch {
+      if (signal.aborted) return;
+      callbacks.onError("The connection was interrupted mid-answer.");
+    }
+  },
 };

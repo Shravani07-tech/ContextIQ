@@ -92,6 +92,9 @@ export interface ChatContextValue {
   // document filter / multi-doc selector
   documentFilter: string | null;
   setDocumentFilter: (filter: string | null) => void;
+  // research mode
+  isResearchMode: boolean;
+  setIsResearchMode: (v: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -118,6 +121,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     useState<DisambiguationPending | null>(null);
   // Document selector state: null = All Documents, string = specific filename
   const [documentFilter, setDocumentFilter] = useState<string | null>(null);
+  // Research Mode: when true, questions go to /research/stream instead of /chat/stream.
+  const [isResearchMode, setIsResearchMode] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -237,11 +242,88 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [finalizeAnswer, setMessages, activeSession, documentFilter],
   );
 
+  // Research-mode query: routes to /research/stream, no document filter.
+  const runResearchQuery = useCallback(
+    (question: string) => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setIsThinking(true);
+      setIsStreaming(false);
+      setStreamingContent("");
+      setStreamingSources([]);
+
+      let accumulated = "";
+      let sources: Source[] = [];
+
+      api.researchStream(
+        question,
+        {
+          onSources: (s) => {
+            sources = s;
+            setStreamingSources(s);
+          },
+          onToken: (text) => {
+            accumulated += text;
+            setIsThinking(false);
+            setIsStreaming(true);
+            setStreamingContent(accumulated);
+          },
+          onDone: () => {
+            abortRef.current = null;
+            setIsThinking(false);
+            setIsStreaming(false);
+            setStreamingContent("");
+            setStreamingSources([]);
+            finalizeAnswer(
+              accumulated || "I cannot synthesize an answer — the documents do not contain sufficient relevant information.",
+              sources,
+            );
+          },
+          onError: (detail) => {
+            abortRef.current = null;
+            setIsThinking(false);
+            setIsStreaming(false);
+            setStreamingContent("");
+            setStreamingSources([]);
+            if (accumulated) finalizeAnswer(accumulated, sources);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "system",
+                content: `Research failed: ${detail}`,
+                retryQuestion: question,
+              },
+            ]);
+            toast.error("Research synthesis failed", { description: detail });
+          },
+        },
+        controller.signal,
+      );
+    },
+    [finalizeAnswer, setMessages],
+  );
+
   // -------------------------------------------------------------------------
   const sendMessage = useCallback(
     (question: string) => {
       const trimmed = question.trim();
       if (!trimmed || isThinking || isStreaming) return;
+
+      // Research Mode: skip disambiguation, route to research pipeline.
+      if (isResearchMode) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "user",
+            content: `🔬 Research: ${trimmed}`,
+            timestamp: now(),
+          },
+        ]);
+        runResearchQuery(trimmed);
+        return;
+      }
 
       // Only show disambiguation when no specific document is already selected
       const docs = queryClient.getQueryData<DocumentsResponse>(["documents"]);
@@ -262,7 +344,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       ]);
       runQuery(trimmed);
     },
-    [isThinking, isStreaming, queryClient, setMessages, runQuery, documentFilter],
+    [isThinking, isStreaming, isResearchMode, queryClient, setMessages, runQuery, runResearchQuery, documentFilter],
   );
 
   const resolveDisambiguation = useCallback(
@@ -384,6 +466,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       createNewChat, switchSession, renameSession, deleteSession,
       disambiguationPending, resolveDisambiguation, cancelDisambiguation,
       documentFilter, setDocumentFilter,
+      isResearchMode, setIsResearchMode,
     }),
     [
       messages, lastSources, isThinking, isStreaming, streamingContent,
@@ -392,6 +475,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       createNewChat, switchSession, renameSession, deleteSession,
       disambiguationPending, resolveDisambiguation, cancelDisambiguation,
       documentFilter, setDocumentFilter,
+      isResearchMode, setIsResearchMode,
     ],
   );
 

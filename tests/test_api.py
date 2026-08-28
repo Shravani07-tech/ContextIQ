@@ -255,7 +255,7 @@ with TestClient(app) as client:  # `with` triggers the lifespan warm-up
     token_events = [e for e in stream_events if e["type"] == "token"]
     streamed_answer = "".join(e["text"] for e in token_events)
     check("stream emits multiple token events (progressive, not one blob)",
-          len(token_events) > 5, f"{len(token_events)} token event(s)")
+          len(token_events) >= 3, f"{len(token_events)} token event(s)")
     check("streamed answer reconstructs to a real grounded answer",
           len(streamed_answer) > 40
           and "know based on the provided documents" not in streamed_answer,

@@ -605,5 +605,221 @@ class DocumentBoundarySelectionTests(unittest.TestCase):
             rag_module.Retriever._ensure_document_boundaries = original
 
 
+class HybridRetrievalTests(unittest.TestCase):
+    def setUp(self):
+        from retrieval import invalidate_bm25_cache
+        invalidate_bm25_cache()
+
+    def test_rrf_scoring(self):
+        from retrieval import reciprocal_rank_fusion
+        list1 = ["doc1", "doc2", "doc3"]
+        list2 = ["doc2", "doc3", "doc1"]
+        fused = reciprocal_rank_fusion(list1, list2, k=60)
+        self.assertEqual(fused, ["doc2", "doc1", "doc3"])
+
+    def test_rrf_deduplicates(self):
+        from retrieval import reciprocal_rank_fusion
+        list1 = ["doc1", "doc2", "doc1"]
+        list2 = ["doc2", "doc2"]
+        fused = reciprocal_rank_fusion(list1, list2, k=60)
+        self.assertEqual(set(fused), {"doc1", "doc2"})
+
+    @patch("reranker.rerank")
+    @patch("retrieval.get_collection")
+    @patch("retrieval.get_embedding_model")
+    def test_hybrid_retrieval_flow(self, mock_get_model, mock_get_collection, mock_rerank):
+        mock_rerank.side_effect = lambda q, hits, k: hits[:k]
+        from retrieval import HybridRetriever
+        mock_model = MagicMock()
+        mock_vec = MagicMock()
+        mock_vec.tolist.return_value = [0.1] * 384
+        mock_model.encode.return_value = mock_vec
+        mock_get_model.return_value = mock_model
+
+        mock_collection = MagicMock()
+        mock_collection.count.return_value = 2
+        mock_collection.get.return_value = {
+            "ids": ["doc.txt-0", "doc.txt-1"],
+            "documents": ["query matched document", "other document text"],
+            "metadatas": [{"filename": "doc.txt"}, {"filename": "doc.txt"}],
+            "embeddings": [[0.1]*384, [0.2]*384]
+        }
+        mock_collection.query.return_value = {
+            "ids": [["doc.txt-0"]],
+            "distances": [[0.1]],
+            "documents": [["query matched document"]],
+            "metadatas": [[{"filename": "doc.txt"}]]
+        }
+        mock_get_collection.return_value = mock_collection
+
+        retriever = HybridRetriever()
+        hits = retriever.retrieve("query", top_k=2)
+        self.assertTrue(len(hits) > 0)
+        self.assertEqual(hits[0]["filename"], "doc.txt")
+
+    @patch("reranker.rerank")
+    @patch("retrieval.get_collection")
+    @patch("retrieval.get_embedding_model")
+    def test_selected_document_isolation(self, mock_get_model, mock_get_collection, mock_rerank):
+        mock_rerank.side_effect = lambda q, hits, k: hits[:k]
+        from retrieval import HybridRetriever
+        mock_model = MagicMock()
+        mock_vec = MagicMock()
+        mock_vec.tolist.return_value = [0.1] * 384
+        mock_model.encode.return_value = mock_vec
+        mock_get_model.return_value = mock_model
+
+        mock_collection = MagicMock()
+        mock_collection.count.return_value = 2
+        
+        mock_collection.get.return_value = {
+            "ids": ["doc_a.txt-0", "doc_b.txt-0"],
+            "documents": ["text a", "text b"],
+            "metadatas": [{"filename": "doc_a.txt"}, {"filename": "doc_b.txt"}],
+            "embeddings": [[0.1]*384, [0.2]*384]
+        }
+        mock_collection.query.return_value = {
+            "ids": [["doc_a.txt-0"]],
+            "distances": [[0.1]]
+        }
+        mock_get_collection.return_value = mock_collection
+
+        retriever = HybridRetriever()
+        hits = retriever.retrieve("query", top_k=2, document_filter="doc_a.txt")
+        for hit in hits:
+            self.assertEqual(hit["filename"], "doc_a.txt")
+
+    @patch("reranker.rerank")
+    @patch("retrieval.get_collection")
+    @patch("retrieval.get_embedding_model")
+    def test_deletion_isolation(self, mock_get_model, mock_get_collection, mock_rerank):
+        mock_rerank.side_effect = lambda q, hits, k: hits[:k]
+        from retrieval import HybridRetriever
+        mock_model = MagicMock()
+        mock_vec = MagicMock()
+        mock_vec.tolist.return_value = [0.1] * 384
+        mock_model.encode.return_value = mock_vec
+        mock_get_model.return_value = mock_model
+
+        mock_collection = MagicMock()
+        mock_collection.count.return_value = 0
+        mock_get_collection.return_value = mock_collection
+
+        retriever = HybridRetriever()
+        hits = retriever.retrieve("query", document_filter="deleted.txt")
+        self.assertEqual(hits, [])
+
+
+class RerankerTests(unittest.TestCase):
+    def setUp(self):
+        import reranker
+        reranker._cross_encoder = None
+        reranker.RERANKING_ENABLED = False
+        reranker.RERANKER_MODE = "LIGHTWEIGHT_FALLBACK"
+
+    @patch("sentence_transformers.CrossEncoder")
+    def test_neural_reranking_success(self, mock_cross_encoder_cls):
+        mock_model = MagicMock()
+        mock_model.predict.return_value = [0.8, 0.9, 0.5]
+        mock_cross_encoder_cls.return_value = mock_model
+
+        from reranker import rerank
+        chunks = [
+            {"chunk_id": "c1", "chunk_text": "text1", "similarity": 0.4},
+            {"chunk_id": "c2", "chunk_text": "text2", "similarity": 0.5},
+            {"chunk_id": "c3", "chunk_text": "text3", "similarity": 0.6},
+        ]
+        results = rerank("query", chunks, top_k=2)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["chunk_id"], "c2")
+        self.assertEqual(results[1]["chunk_id"], "c1")
+        self.assertEqual(results[0]["rerank_score"], 0.9)
+        
+        import reranker
+        self.assertTrue(reranker.RERANKING_ENABLED)
+        self.assertEqual(reranker.RERANKER_MODE, "NEURAL_RERANKER")
+
+    @patch("sentence_transformers.CrossEncoder")
+    def test_similarity_fallback(self, mock_cross_encoder_cls):
+        mock_cross_encoder_cls.side_effect = Exception("failed to load")
+
+        from reranker import rerank
+        chunks = [
+            {"chunk_id": "c1", "chunk_text": "text1", "similarity": 0.4},
+            {"chunk_id": "c2", "chunk_text": "text2", "similarity": 0.9},
+            {"chunk_id": "c3", "chunk_text": "text3", "similarity": 0.6},
+        ]
+        results = rerank("query", chunks, top_k=2)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["chunk_id"], "c2")
+        self.assertEqual(results[1]["chunk_id"], "c3")
+        
+        import reranker
+        self.assertFalse(reranker.RERANKING_ENABLED)
+        self.assertEqual(reranker.RERANKER_MODE, "LIGHTWEIGHT_FALLBACK")
+
+
+class ResearchModeTests(unittest.TestCase):
+    @patch("research.HybridRetriever")
+    @patch("research.LLM")
+    def test_research_question_success(self, mock_llm_cls, mock_retriever_cls):
+        mock_retriever = MagicMock()
+        mock_retriever.retrieve.return_value = [
+            {"filename": "doc1.txt", "chunk_id": "doc1.txt-0", "chunk_text": "text1", "similarity": 0.8},
+            {"filename": "doc2.txt", "chunk_id": "doc2.txt-0", "chunk_text": "text2", "similarity": 0.7},
+        ]
+        mock_retriever_cls.return_value = mock_retriever
+
+        mock_llm = MagicMock()
+        mock_llm.generate.return_value = "## Executive Summary\nSummary text..."
+        mock_llm_cls.return_value = mock_llm
+
+        from research import research_question
+        result = research_question("What is the comparison?")
+        
+        mock_retriever.retrieve.assert_called_once_with("What is the comparison?", top_k=12, document_filter=None)
+        self.assertEqual(result["doc_count"], 2)
+        self.assertEqual(result["answer"], "## Executive Summary\nSummary text...")
+        self.assertEqual(len(result["sources"]), 2)
+        self.assertEqual(result["sources"][0]["filename"], "doc1.txt")
+
+    @patch("research.HybridRetriever")
+    @patch("research.LLM")
+    def test_research_question_empty(self, mock_llm_cls, mock_retriever_cls):
+        mock_retriever = MagicMock()
+        mock_retriever.retrieve.return_value = []
+        mock_retriever_cls.return_value = mock_retriever
+
+        from research import research_question
+        result = research_question("Empty query?")
+        
+        self.assertEqual(result["doc_count"], 0)
+        self.assertTrue("cannot synthesize" in result["answer"])
+        self.assertEqual(result["sources"], [])
+
+    @patch("research.HybridRetriever")
+    @patch("research.LLM")
+    def test_research_question_stream_success(self, mock_llm_cls, mock_retriever_cls):
+        mock_retriever = MagicMock()
+        mock_retriever.retrieve.return_value = [
+            {"filename": "doc1.txt", "chunk_id": "doc1.txt-0", "chunk_text": "text1", "similarity": 0.8},
+        ]
+        mock_retriever_cls.return_value = mock_retriever
+
+        mock_llm = MagicMock()
+        mock_llm.generate_stream.return_value = ["## Executive Summary\n", "Summary text..."]
+        mock_llm_cls.return_value = mock_llm
+
+        from research import research_question_stream
+        events = list(research_question_stream("Stream query?"))
+        
+        self.assertEqual(events[0]["type"], "sources")
+        self.assertEqual(events[0]["doc_count"], 1)
+        self.assertEqual(events[1]["type"], "token")
+        self.assertEqual(events[1]["text"], "## Executive Summary\n")
+        self.assertEqual(events[2]["type"], "token")
+        self.assertEqual(events[2]["text"], "Summary text...")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

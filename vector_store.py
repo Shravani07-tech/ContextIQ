@@ -81,6 +81,8 @@ def save_chunks(chunks: list[dict]) -> int:
         documents=[chunk["chunk_text"] for chunk in chunks],
         metadatas=[_meta(chunk) for chunk in chunks],
     )
+    from retrieval import invalidate_bm25_cache
+    invalidate_bm25_cache()
     return collection.count()
 
 
@@ -124,6 +126,8 @@ def delete_document(filename: str) -> int:
     """
     collection = get_collection()
     collection.delete(where={"filename": filename})
+    from retrieval import invalidate_bm25_cache
+    invalidate_bm25_cache()
     return collection.count()
 
 
@@ -144,3 +148,5 @@ def clear_database() -> None:
         # leave a trace instead of failing silently.
         logger.info("Collection '%s' did not exist; nothing to clear.",
                     COLLECTION_NAME)
+    from retrieval import invalidate_bm25_cache
+    invalidate_bm25_cache()
