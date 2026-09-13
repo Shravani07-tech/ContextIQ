@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.deps import get_rag_service
-from api.routers import chat, documents, system, research
+from api.routers import chat, collections, documents, research, system
 from config import CORS_ORIGINS, MAX_UPLOAD_MB
 
 # Total-request ceiling, well above one file's cap to allow legitimate
@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Section descriptions shown in the interactive /docs UI.
 OPENAPI_TAGS = [
+    {"name": "collections", "description": "Workspace collections management."},
     {"name": "chat", "description": "Grounded question answering with source citations."},
     {"name": "research", "description": "Multi-document synthesis across all indexed documents."},
     {"name": "documents", "description": "Upload, index, and list knowledge-base documents."},
@@ -153,6 +154,7 @@ async def unhandled_error(request: Request, exc: Exception):
     )
 
 
+app.include_router(collections.router)
 app.include_router(system.router)
 app.include_router(documents.router)
 app.include_router(chat.router)

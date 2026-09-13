@@ -14,6 +14,8 @@ from config import DATA_DIR
 from ingest import ingest_file
 from vector_store import delete_document
 
+from metadata_store import MetadataStore
+
 logger = logging.getLogger(__name__)
 
 # Mirrors the file types the ingestion pipeline supports.
@@ -39,21 +41,32 @@ class DocumentService:
         """True if the file extension is one the pipeline can ingest."""
         return os.path.splitext(filename.lower())[1] in ALLOWED_EXTENSIONS
 
-    def save_upload(self, filename: str, content: bytes) -> str:
+    def save_upload(
+        self,
+        filename: str,
+        content: bytes,
+        collection_id: str | None = None,
+    ) -> str:
         """
         Write one uploaded file into data/ and return its safe name.
-
-        basename() strips any directory components from the
-        client-supplied filename, so a crafted name can never write
-        outside data/ — the same path-traversal guard the Streamlit
-        handler used.
+        Optionally links to target collection_id.
         """
         safe_name = os.path.basename(filename)
         if not safe_name or not self.is_supported(safe_name):
             raise ValueError(f"Unsupported file type: {filename!r}")
 
-        with open(os.path.join(DATA_DIR, safe_name), "wb") as f:
+        file_path = os.path.join(DATA_DIR, safe_name)
+        with open(file_path, "wb") as f:
             f.write(content)
+
+        ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
+        MetadataStore.upsert_document(
+            filename=safe_name,
+            file_type=ext,
+            file_size=len(content),
+            collection_id=collection_id,
+        )
+
         logger.info("Saved upload '%s' (%d bytes)", safe_name, len(content))
         return safe_name
 
@@ -69,11 +82,6 @@ class DocumentService:
     def index_files(self, filenames: list[str] | None = None) -> list[dict]:
         """
         Run the full pipeline (load -> chunk -> embed -> save) per file.
-
-        With filenames=None, every supported file in data/ is indexed.
-        Returns one result dict per file; failures are captured per
-        file (matching the pipeline's own resilience policy) instead
-        of aborting the whole batch.
         """
         targets = (
             [os.path.basename(n) for n in filenames]
@@ -92,6 +100,14 @@ class DocumentService:
                 continue
             try:
                 chunks = ingest_file(path)
+                size_bytes = os.path.getsize(path) if os.path.exists(path) else 0
+                ext = os.path.splitext(name)[1].lower().lstrip(".")
+                MetadataStore.upsert_document(
+                    filename=name,
+                    file_type=ext,
+                    file_size=size_bytes,
+                    chunk_count=chunks,
+                )
                 results.append(
                     {"filename": name, "status": "indexed",
                      "chunks_indexed": chunks}
@@ -100,15 +116,9 @@ class DocumentService:
                 logger.exception("Indexing failed for '%s'", name)
                 error = str(e)
 
-                # A file that failed to index is an orphan: it sits in
-                # data/ invisible to the UI (GET /documents only lists
-                # what's actually in the vector store), but would
-                # silently resurface — and get indexed with whatever
-                # caused the original failure — the next time someone
-                # runs a full reindex. Remove it now and say so, so
-                # the failure is fully resolved rather than deferred.
                 try:
                     os.remove(path)
+                    MetadataStore.delete_document_meta(name)
                     error += " (the file has been removed — re-upload to retry)"
                 except OSError:
                     logger.exception(
@@ -124,14 +134,12 @@ class DocumentService:
 
     def delete_document(self, filename: str) -> int:
         """
-        Remove one document completely: its vectors from Chroma AND
-        its file from data/ (if still present — it may already be
-        gone, e.g. after an earlier failed-index cleanup).
-
-        Returns the vector count remaining after the delete.
+        Remove one document completely: its vectors from Chroma, metadata from SQLite,
+        and file from data/.
         """
         safe_name = os.path.basename(filename)
         count = delete_document(safe_name)
+        MetadataStore.delete_document_meta(safe_name)
 
         path = os.path.join(DATA_DIR, safe_name)
         if os.path.isfile(path):

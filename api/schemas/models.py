@@ -215,6 +215,85 @@ class DeleteDocumentResponse(BaseModel):
     vector_count: int
 
 
+# --- collections -------------------------------------------------------------
+
+
+class CollectionCreate(BaseModel):
+    """Body for POST /collections."""
+
+    name: str = Field(..., description="Collection display name")
+    description: str = Field(default="", description="Optional description")
+    color: str = Field(default="#3B82F6", description="Hex color code")
+    icon: str = Field(default="folder", description="Lucide icon identifier")
+
+    @field_validator("name")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Collection name must not be empty")
+        return v
+
+
+class CollectionUpdate(BaseModel):
+    """Body for PATCH /collections/{collection_id}."""
+
+    name: str | None = None
+    description: str | None = None
+    color: str | None = None
+    icon: str | None = None
+
+
+class CollectionResponse(BaseModel):
+    """Structured collection details."""
+
+    id: str
+    name: str
+    description: str
+    color: str
+    icon: str
+    created_at: str
+    updated_at: str
+    document_count: int = 0
+
+
+class CollectionListResponse(BaseModel):
+    """List of all user collections."""
+
+    collections: list[CollectionResponse]
+
+
+class DocumentMoveRequest(BaseModel):
+    """Body for PATCH /documents/{filename} to assign/move collection."""
+
+    collection_id: str | None = Field(
+        default=None,
+        description="Target collection ID, or null to set Uncategorized",
+    )
+
+
+class DocumentDetail(BaseModel):
+    """Rich document metadata details."""
+
+    document_id: str
+    filename: str
+    file_type: str
+    file_size: int = 0
+    chunk_count: int = 0
+    extraction_method: str = "text"
+    collection_id: str | None = None
+    collection_name: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class DocumentListResponse(BaseModel):
+    """Extended list of documents with metadata."""
+
+    documents: list[DocumentDetail]
+
+
 # --- system ------------------------------------------------------------------
 
 
@@ -245,3 +324,4 @@ class HealthResponse(BaseModel):
     status: str  # "ok" if everything reachable, else "degraded"
     chroma: bool
     ollama: bool
+
