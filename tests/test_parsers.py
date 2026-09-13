@@ -9,6 +9,9 @@ from parsers import (
     DOCXParser,
     PPTXParser,
     XLSXParser,
+    CSVParser,
+    MarkdownParser,
+    HTMLParser,
     default_registry,
 )
 
@@ -89,6 +92,59 @@ def test_xlsx_parser(tmp_path):
     assert "Revenue: $1,200,000" in norm_doc.text
     assert norm_doc.sheets is not None
     assert norm_doc.sheets[0][0] == "Revenue"
+
+
+def test_csv_parser(tmp_path):
+    csv_path = tmp_path / "dataset.csv"
+    csv_path.write_text("Name,Role,Status\nAlice,Engineer,Active\nBob,Designer,Active\n", encoding="utf-8")
+
+    parser = CSVParser()
+    assert parser.can_parse("dataset.csv") is True
+    norm_doc = parser.parse(str(csv_path))
+
+    assert norm_doc.file_type == "csv"
+    assert norm_doc.filename == "dataset.csv"
+    assert "Name: Alice" in norm_doc.text
+    assert "Role: Engineer" in norm_doc.text
+
+
+def test_markdown_parser(tmp_path):
+    md_path = tmp_path / "notes.md"
+    md_path.write_text("# ContextIQ Architecture\n\nContextIQ is local-first.\n\n## Retrieval Pipeline\n\nHybrid search is enabled.\n", encoding="utf-8")
+
+    parser = MarkdownParser()
+    assert parser.can_parse("notes.md") is True
+    assert parser.can_parse("notes.markdown") is True
+    norm_doc = parser.parse(str(md_path))
+
+    assert norm_doc.file_type == "md"
+    assert norm_doc.filename == "notes.md"
+    assert norm_doc.sections is not None
+    assert any(sec[0] == "Retrieval Pipeline" for sec in norm_doc.sections)
+
+
+def test_html_parser(tmp_path):
+    html_path = tmp_path / "doc.html"
+    html_path.write_text("""<!DOCTYPE html>
+<html>
+<head><title>System Specs</title></head>
+<body>
+<script>alert('noise');</script>
+<h1>Overview</h1>
+<p>ContextIQ 2.0 Ingestion Engine.</p>
+</body>
+</html>""", encoding="utf-8")
+
+    parser = HTMLParser()
+    assert parser.can_parse("doc.html") is True
+    assert parser.can_parse("doc.htm") is True
+    norm_doc = parser.parse(str(html_path))
+
+    assert norm_doc.file_type == "html"
+    assert norm_doc.filename == "doc.html"
+    assert "alert('noise')" not in norm_doc.text
+    assert "ContextIQ 2.0 Ingestion Engine" in norm_doc.text
+    assert norm_doc.sections is not None
 
 
 def test_parser_registry(tmp_path):

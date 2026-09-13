@@ -269,6 +269,179 @@ class XLSXParser(BaseParser):
         )
 
 
+class CSVParser(BaseParser):
+    """Parser for CSV datasets (.csv)."""
+
+    def can_parse(self, filename: str) -> bool:
+        return filename.lower().endswith(".csv")
+
+    def parse(self, file_path: str) -> NormalizedDocument:
+        import csv
+
+        filename = os.path.basename(file_path)
+        content = ""
+        for encoding in ["utf-8", "latin-1", "cp1252"]:
+            try:
+                with open(file_path, "r", encoding=encoding) as f:
+                    content = f.read()
+                break
+            except Exception:
+                continue
+
+        lines = [line for line in content.splitlines() if line.strip()]
+        if not lines:
+            return NormalizedDocument(
+                filename=filename, text="", file_type="csv", document_id=filename, source_path=file_path
+            )
+
+        sample = "\n".join(lines[:10])
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=";,\t|")
+            delimiter = dialect.delimiter
+        except Exception:
+            delimiter = ","
+
+        reader = csv.reader(lines, delimiter=delimiter)
+        rows = list(reader)
+        if not rows:
+            return NormalizedDocument(
+                filename=filename, text="", file_type="csv", document_id=filename, source_path=file_path
+            )
+
+        headers = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(rows[0])]
+        data_rows: List[str] = []
+
+        for r_idx, row in enumerate(rows[1:], 1):
+            fields = []
+            for c_idx, val in enumerate(row):
+                val_str = val.strip()
+                if val_str:
+                    h_name = headers[c_idx] if c_idx < len(headers) else f"Col_{c_idx+1}"
+                    fields.append(f"{h_name}: {val_str}")
+            if fields:
+                data_rows.append(f"Row {r_idx}: " + " | ".join(fields))
+
+        full_text = "\n".join(data_rows)
+
+        return NormalizedDocument(
+            filename=filename,
+            text=full_text,
+            file_type="csv",
+            document_id=filename,
+            source_path=file_path,
+            extraction_method="text",
+        )
+
+
+class MarkdownParser(BaseParser):
+    """Parser for Markdown documents (.md, .markdown)."""
+
+    def can_parse(self, filename: str) -> bool:
+        lower = filename.lower()
+        return lower.endswith(".md") or lower.endswith(".markdown")
+
+    def parse(self, file_path: str) -> NormalizedDocument:
+        filename = os.path.basename(file_path)
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+        sections: List[Tuple[str, str]] = []
+        current_heading = "Overview"
+        current_lines: List[str] = []
+
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                heading_text = stripped.lstrip("#").strip()
+                if current_lines:
+                    sections.append((current_heading, "\n".join(current_lines)))
+                    current_lines = []
+                if heading_text:
+                    current_heading = heading_text
+            else:
+                current_lines.append(line)
+
+        if current_lines:
+            sections.append((current_heading, "\n".join(current_lines)))
+
+        full_text = "\n\n".join(f"### Section: {h}\n{t}" for h, t in sections) if sections else content
+
+        return NormalizedDocument(
+            filename=filename,
+            text=full_text,
+            file_type="md",
+            document_id=filename,
+            source_path=file_path,
+            sections=sections if sections else None,
+            extraction_method="text",
+        )
+
+
+class HTMLParser(BaseParser):
+    """Parser for HTML documents (.html, .htm)."""
+
+    def can_parse(self, filename: str) -> bool:
+        lower = filename.lower()
+        return lower.endswith(".html") or lower.endswith(".htm")
+
+    def parse(self, file_path: str) -> NormalizedDocument:
+        from bs4 import BeautifulSoup
+
+        filename = os.path.basename(file_path)
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            raw_html = f.read()
+
+        soup = BeautifulSoup(raw_html, "html.parser")
+
+        for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
+            tag.decompose()
+
+        title_tag = soup.find("title")
+        doc_title = title_tag.get_text().strip() if title_tag else filename
+
+        sections: List[Tuple[str, str]] = []
+        current_heading = doc_title
+        current_lines: List[str] = []
+
+        body = soup.find("body") or soup
+        for element in body.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "table", "ul", "ol"]):
+            tag_name = element.name.lower()
+            if tag_name.startswith("h"):
+                text = element.get_text().strip()
+                if text:
+                    if current_lines:
+                        sections.append((current_heading, "\n".join(current_lines)))
+                        current_lines = []
+                    current_heading = text
+            elif tag_name == "table":
+                table_lines = []
+                for tr in element.find_all("tr"):
+                    cells = [td.get_text().strip() for td in tr.find_all(["td", "th"]) if td.get_text().strip()]
+                    if cells:
+                        table_lines.append(" | ".join(cells))
+                if table_lines:
+                    current_lines.append("\n".join(table_lines))
+            else:
+                text = element.get_text().strip()
+                if text:
+                    current_lines.append(text)
+
+        if current_lines:
+            sections.append((current_heading, "\n".join(current_lines)))
+
+        full_text = "\n\n".join(f"=== {h} ===\n{t}" for h, t in sections) if sections else soup.get_text(separator="\n")
+
+        return NormalizedDocument(
+            filename=filename,
+            text=full_text,
+            file_type="html",
+            document_id=filename,
+            source_path=file_path,
+            sections=sections if sections else None,
+            extraction_method="text",
+        )
+
+
 class ParserRegistry:
     """Registry managing available document parsers."""
 
@@ -279,6 +452,9 @@ class ParserRegistry:
             DOCXParser(),
             PPTXParser(),
             XLSXParser(),
+            CSVParser(),
+            MarkdownParser(),
+            HTMLParser(),
         ]
 
     def register_parser(self, parser: BaseParser) -> None:
@@ -303,4 +479,5 @@ class ParserRegistry:
 
 # Global registry singleton instance
 default_registry = ParserRegistry()
+
 
