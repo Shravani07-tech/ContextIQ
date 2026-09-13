@@ -85,7 +85,7 @@ export function UploadDropzone() {
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.txt"
+        accept=".pdf,.txt,.docx,.pptx,.xlsx,.csv,.md,.markdown,.html,.htm"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -182,7 +182,7 @@ export function UploadDropzone() {
               type="button"
               {...crossFadeProps(reduceMotion)}
               onClick={() => inputRef.current?.click()}
-              aria-label="Upload PDF or TXT files (click to browse or drop files here)"
+              aria-label="Upload documents (click to browse or drop files here)"
               className="flex w-full flex-col items-center gap-2 hover:text-foreground"
             >
               <UploadCloud
@@ -190,7 +190,7 @@ export function UploadDropzone() {
                 aria-hidden
               />
               <span className="text-[13px] text-muted-foreground">
-                {dragActive ? "Drop to upload" : "Add or drop PDF / TXT files"}
+                {dragActive ? "Drop to upload" : "Add or drop documents"}
               </span>
             </motion.button>
           )}

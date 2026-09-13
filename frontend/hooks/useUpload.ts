@@ -19,7 +19,18 @@ import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { api } from "@/lib/api";
 import type { DocumentsResponse, FileResult } from "@/lib/types";
 
-const ALLOWED_EXTENSIONS = [".pdf", ".txt"];
+const ALLOWED_EXTENSIONS = [
+  ".pdf",
+  ".txt",
+  ".docx",
+  ".pptx",
+  ".xlsx",
+  ".csv",
+  ".md",
+  ".markdown",
+  ".html",
+  ".htm",
+];
 // Sanity cap — a local embedding pipeline chokes on giant files long
 // before this, so fail fast with a clear message instead.
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
@@ -44,7 +55,7 @@ function validate(files: File[]): { valid: File[]; rejected: RejectedFile[] } {
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       rejected.push({
         name: file.name,
-        reason: "Only PDF and TXT files are supported",
+        reason: "Unsupported file type (supported: PDF, TXT, DOCX, PPTX, XLSX, CSV, MD, HTML)",
       });
     } else if (file.size > MAX_FILE_SIZE) {
       rejected.push({ name: file.name, reason: "File is larger than 25 MB" });

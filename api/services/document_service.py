@@ -17,7 +17,18 @@ from vector_store import delete_document
 logger = logging.getLogger(__name__)
 
 # Mirrors the file types the ingestion pipeline supports.
-ALLOWED_EXTENSIONS = {".pdf", ".txt"}
+ALLOWED_EXTENSIONS = {
+    ".pdf",
+    ".txt",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".csv",
+    ".md",
+    ".markdown",
+    ".html",
+    ".htm",
+}
 
 
 class DocumentService:
