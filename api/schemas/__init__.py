@@ -15,6 +15,7 @@ from api.schemas.models import (
     DocumentDetail,
     DocumentListResponse,
     DocumentMoveRequest,
+    DocumentSummaryResponse,
     DocumentsResponse,
     FileResult,
     HealthResponse,
@@ -43,6 +44,7 @@ __all__ = [
     "DocumentDetail",
     "DocumentListResponse",
     "DocumentMoveRequest",
+    "DocumentSummaryResponse",
     "DocumentsResponse",
     "FileResult",
     "HealthResponse",
@@ -58,3 +60,4 @@ __all__ = [
     "TagListResponse",
     "UploadResponse",
 ]
+

@@ -386,3 +386,20 @@ class HealthResponse(BaseModel):
     chroma: bool
     ollama: bool
 
+
+# --- summary -----------------------------------------------------------------
+
+
+class DocumentSummaryResponse(BaseModel):
+    """Structured automatic summary and key points for a document."""
+
+    document_id: str
+    filename: str
+    status: str  # "pending" | "generating" | "completed" | "failed"
+    summary: str = ""
+    key_points: list[str] = Field(default_factory=list)
+    error: str | None = None
+    generated_at: str | None = None
+    version: int = 1
+
+

@@ -12,12 +12,13 @@
 
 from fastapi import APIRouter, HTTPException, UploadFile
 
-from api.deps import DocumentServiceDep
+from api.deps import DocumentServiceDep, SummaryServiceDep
 from api.schemas import (
     DeleteDocumentResponse,
     DocumentDetail,
     DocumentListResponse,
     DocumentMoveRequest,
+    DocumentSummaryResponse,
     DocumentsResponse,
     FileResult,
     IndexRequest,
@@ -32,6 +33,7 @@ from metadata_store import MetadataStore
 from vector_store import get_stored_filenames, get_vector_count
 
 router = APIRouter(tags=["documents"])
+
 
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
@@ -249,3 +251,43 @@ def delete_one(filename: str, docs: DocumentServiceDep) -> DeleteDocumentRespons
     return DeleteDocumentResponse(
         filename=filename, status="deleted", vector_count=count
     )
+
+
+@router.get(
+    "/documents/{filename}/summary",
+    response_model=DocumentSummaryResponse,
+    summary="Get document summary",
+)
+def get_summary(
+    filename: str,
+    summary_svc: SummaryServiceDep,
+) -> DocumentSummaryResponse:
+    """Fetch existing summary for a document or trigger initial generation."""
+    summary = summary_svc.get_summary(filename)
+    if not summary:
+        if filename in get_stored_filenames() or MetadataStore.get_document(filename):
+            summary = summary_svc.summarize_document(filename)
+        else:
+            raise HTTPException(
+                status_code=404, detail=f"Document '{filename}' not found"
+            )
+    return DocumentSummaryResponse(**summary)
+
+
+@router.post(
+    "/documents/{filename}/summary/retry",
+    response_model=DocumentSummaryResponse,
+    summary="Retry or regenerate document summary",
+)
+def retry_summary(
+    filename: str,
+    summary_svc: SummaryServiceDep,
+) -> DocumentSummaryResponse:
+    """Force-regenerate summary for a document."""
+    if filename not in get_stored_filenames() and not MetadataStore.get_document(filename):
+        raise HTTPException(
+            status_code=404, detail=f"Document '{filename}' not found"
+        )
+    summary = summary_svc.summarize_document(filename, force=True)
+    return DocumentSummaryResponse(**summary)
+
