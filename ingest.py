@@ -13,156 +13,76 @@
 
 import logging
 import os
-import re
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pypdf import PdfReader
 
 from config import CHUNK_OVERLAP, CHUNK_SIZE, DATA_DIR
 from embedding_model import get_embedding_model
+from parsers import NormalizedDocument, default_registry, strip_references
 from vector_store import save_chunks
 
 logger = logging.getLogger(__name__)
 
-# A standalone "References" / "Bibliography" heading marks the start of a
-# paper's back-matter. Those pages are dense citation text that scores
-# highly against almost any query and crowds the real content out of the
-# top results — so we drop them before chunking.
-_REFERENCES_HEADING = re.compile(
-    r"(?im)^[ \t]*(?:\d+\.|[IVXLCDM]+\.)?[ \t]*(references|bibliography|works cited)(?:[ \t]+and[ \t]+(?:references|bibliography|works cited))?[ \t]*$"
-)
-
-
-def _strip_references(text: str) -> str:
-    """
-    Remove a trailing References/Bibliography section, if present.
-
-    Only a heading in the LATTER HALF of the document is treated as the
-    real back-matter boundary (so an early in-text mention of the word
-    isn't mistaken for it). No such heading -> text returned unchanged.
-    """
-    for match in _REFERENCES_HEADING.finditer(text):
-        if match.start() > len(text) * 0.5:
-            return text[: match.start()]
-    return text
-
 
 def load_txt_file(file_path: str) -> str:
-    """
-    Read a .txt file and return its full text content as a string.
-
-    Plain text files are simple: we just open and read them.
-    Encoding is set to "utf-8" with errors ignored so that a file
-    containing a stray non-UTF-8 byte doesn't crash the whole run.
-    """
+    """Read a .txt file and return its full text content as a string."""
+    parser = default_registry.get_parser(file_path)
+    if parser and parser.can_parse(file_path):
+        return parser.parse(file_path).text
     with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
         return f.read()
 
 
 def load_pdf_file(file_path: str) -> list[tuple[int, str]]:
-    """
-    Read a .pdf file and return a list of (1-based page number, text) tuples.
-
-    Each page's text is returned separately (not concatenated) so
-    downstream chunking can track which page each chunk originated from.
-    Pages with no extractable text (e.g. scanned images) are skipped.
-    """
-    reader = PdfReader(file_path)
-    pages: list[tuple[int, str]] = []
-    for page_num, page in enumerate(reader.pages, 1):
-        text = page.extract_text()
-        if text and text.strip():
-            pages.append((page_num, text))
-    return pages
+    """Read a .pdf file and return a list of (1-based page number, text) tuples."""
+    doc = default_registry.parse_file(file_path)
+    return doc.pages or []
 
 
 def load_documents(data_dir: str = DATA_DIR) -> list[dict]:
     """
-    Load every .pdf and .txt file found in `data_dir`.
+    Load every supported file found in `data_dir`.
 
-    Returns a list of documents, where each document is a dict:
-        {"filename": <str>, "text": <str>, "pages": list[tuple[int, str]] | None}
-
-    For PDF files, "pages" contains (page_num, page_text) pairs so
-    chunk_documents() can attach page numbers. For TXT files, "pages"
-    is None (no page concept).
-
-    Errors are handled gracefully per-file: if one file fails to
-    load (e.g. a corrupted PDF), the error is logged and the loop
-    continues on to the remaining files instead of stopping the
-    whole ingestion run.
+    Returns a list of document dicts for backward compatibility.
     """
     documents: list[dict] = []
 
     for filename in sorted(os.listdir(data_dir)):
         file_path = os.path.join(data_dir, filename)
 
-        # Skip subfolders and hidden/placeholder files like .gitkeep.
         if not os.path.isfile(file_path):
             continue
 
-        lower_name = filename.lower()
+        parser = default_registry.get_parser(filename)
+        if not parser:
+            continue
 
         try:
-            if lower_name.endswith(".txt"):
-                text = load_txt_file(file_path)
-                documents.append({
-                    "filename": filename,
-                    "text": text,
-                    "pages": None,  # TXT: no page numbers
-                })
-                logger.info("Loaded '%s': %d characters extracted",
-                            filename, len(text))
-
-            elif lower_name.endswith(".pdf"):
-                pages = load_pdf_file(file_path)
-                full_text = "\n".join(text for _, text in pages)
-                documents.append({
-                    "filename": filename,
-                    "text": full_text,
-                    "pages": pages,  # PDF: [(page_num, text), ...]
-                })
-                logger.info("Loaded '%s': %d pages, %d characters extracted",
-                            filename, len(pages), len(full_text))
-            else:
-                # Not a supported file type — ignore it silently.
-                continue
-
+            norm_doc = parser.parse(file_path)
+            documents.append({
+                "filename": norm_doc.filename,
+                "document_id": norm_doc.document_id,
+                "text": norm_doc.text,
+                "pages": norm_doc.pages,
+                "slides": norm_doc.slides,
+                "sheets": norm_doc.sheets,
+                "sections": norm_doc.sections,
+                "extraction_method": norm_doc.extraction_method,
+                "file_type": norm_doc.file_type,
+            })
+            logger.info("Loaded '%s' (%s): %d characters extracted",
+                        filename, norm_doc.file_type, len(norm_doc.text))
         except Exception:
-            # Broad on purpose: whatever goes wrong with one file
-            # (corrupt PDF, permissions, unexpected format) must not
-            # stop ingestion of the remaining files.
             logger.exception("Failed to load '%s'; skipping it", filename)
             continue
 
     return documents
 
 
-def chunk_documents(documents: list[dict]) -> list[dict]:
+def chunk_documents(documents: list[dict | NormalizedDocument]) -> list[dict]:
     """
     Split loaded documents into smaller overlapping chunks.
-
-    Args:
-        documents: List of dicts produced by load_documents(), each
-            shaped {"filename": <str>, "text": <str>, "pages": ...}.
-
-    Returns:
-        A flat list of chunk dicts, each shaped:
-            {
-                "chunk_id":   <str>,
-                "filename":   <str>,
-                "chunk_text": <str>,
-                "page":       <int | None>,   # 1-based page number (PDF only)
-                "section":    <None>,          # reserved for future use
-            }
-
-    For PDFs: chunks are split page-by-page so each chunk's page number
-    is unambiguous. The text splitter is still applied per page to handle
-    long pages gracefully. The references/bibliography stripper is applied
-    to the full document text to identify the cutoff, then only pages
-    before the cutoff are chunked.
-
-    For TXT files: page is always None.
+    Supports both NormalizedDocument objects and legacy dict objects.
     """
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
@@ -171,52 +91,128 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
 
     all_chunks: list[dict] = []
 
-    for doc in documents:
-        filename = doc["filename"]
-        pages_data = doc.get("pages")
+    for item in documents:
+        if isinstance(item, NormalizedDocument):
+            filename = item.filename
+            document_id = item.document_id
+            full_text = item.text
+            pages_data = item.pages
+            slides_data = item.slides
+            sheets_data = item.sheets
+            sections_data = item.sections
+            extraction_method = item.extraction_method
+        else:
+            filename = item["filename"]
+            document_id = item.get("document_id", filename)
+            full_text = item["text"]
+            pages_data = item.get("pages")
+            slides_data = item.get("slides")
+            sheets_data = item.get("sheets")
+            sections_data = item.get("sections")
+            extraction_method = item.get("extraction_method", "text")
+
+        chunk_idx = 0
 
         if pages_data is not None:
             # PDF: chunk per-page to preserve page numbers.
-            # Apply reference stripping on the full text to find the cutoff.
-            full_text = doc["text"]
-            stripped = _strip_references(full_text)
+            stripped = strip_references(full_text)
             stripped_len = len(stripped)
             char_count = 0
 
-            chunk_idx = 0
             for page_num, page_text in pages_data:
-                # Determine if this page falls before the references cutoff.
-                # We track character position through the document.
                 if char_count >= stripped_len:
-                    break  # This page is in the back-matter — skip it.
+                    break  # Back-matter / references cutoff reached
 
                 page_pieces = splitter.split_text(page_text)
                 for piece in page_pieces:
                     all_chunks.append({
                         "chunk_id": f"{filename}-{chunk_idx}",
                         "filename": filename,
-                        "document_id": filename,
+                        "document_id": document_id,
                         "chunk_text": piece,
                         "page": page_num,
                         "section": None,
+                        "slide": None,
+                        "sheet": None,
+                        "extraction_method": extraction_method,
                     })
                     chunk_idx += 1
 
-                char_count += len(page_text) + 1  # +1 for the joining newline
+                char_count += len(page_text) + 1
 
             logger.info("Chunked '%s': %d chunk(s) (PDF, page-aware)", filename, chunk_idx)
 
+        elif slides_data is not None:
+            # PPTX: chunk per-slide
+            for slide_num, slide_text in slides_data:
+                slide_pieces = splitter.split_text(slide_text)
+                for piece in slide_pieces:
+                    all_chunks.append({
+                        "chunk_id": f"{filename}-{chunk_idx}",
+                        "filename": filename,
+                        "document_id": document_id,
+                        "chunk_text": piece,
+                        "page": None,
+                        "section": None,
+                        "slide": slide_num,
+                        "sheet": None,
+                        "extraction_method": extraction_method,
+                    })
+                    chunk_idx += 1
+            logger.info("Chunked '%s': %d chunk(s) (PPTX, slide-aware)", filename, chunk_idx)
+
+        elif sheets_data is not None:
+            # XLSX: chunk per-sheet
+            for sheet_name, sheet_text in sheets_data:
+                sheet_pieces = splitter.split_text(sheet_text)
+                for piece in sheet_pieces:
+                    all_chunks.append({
+                        "chunk_id": f"{filename}-{chunk_idx}",
+                        "filename": filename,
+                        "document_id": document_id,
+                        "chunk_text": piece,
+                        "page": None,
+                        "section": None,
+                        "slide": None,
+                        "sheet": sheet_name,
+                        "extraction_method": extraction_method,
+                    })
+                    chunk_idx += 1
+            logger.info("Chunked '%s': %d chunk(s) (XLSX, sheet-aware)", filename, chunk_idx)
+
+        elif sections_data is not None:
+            # DOCX / MD / HTML: chunk per-section
+            for sec_heading, sec_text in sections_data:
+                sec_pieces = splitter.split_text(sec_text)
+                for piece in sec_pieces:
+                    all_chunks.append({
+                        "chunk_id": f"{filename}-{chunk_idx}",
+                        "filename": filename,
+                        "document_id": document_id,
+                        "chunk_text": piece,
+                        "page": None,
+                        "section": sec_heading or None,
+                        "slide": None,
+                        "sheet": None,
+                        "extraction_method": extraction_method,
+                    })
+                    chunk_idx += 1
+            logger.info("Chunked '%s': %d chunk(s) (section-aware)", filename, chunk_idx)
+
         else:
-            # TXT: chunk the full text without page tracking.
-            pieces = splitter.split_text(_strip_references(doc["text"]))
+            # TXT or generic text chunking
+            pieces = splitter.split_text(strip_references(full_text))
             for i, piece in enumerate(pieces):
                 all_chunks.append({
                     "chunk_id": f"{filename}-{i}",
                     "filename": filename,
-                    "document_id": filename,
+                    "document_id": document_id,
                     "chunk_text": piece,
                     "page": None,
                     "section": None,
+                    "slide": None,
+                    "sheet": None,
+                    "extraction_method": extraction_method,
                 })
 
             logger.info("Chunked '%s': %d chunk(s)", filename, len(pieces))
@@ -225,33 +221,11 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
 
 
 def embed_chunks(chunks: list[dict]) -> list[dict]:
-    """
-    Generate an embedding vector for every chunk and attach it in memory.
-
-    Args:
-        chunks: List of chunk dicts produced by chunk_documents(), each
-            shaped {"chunk_id", "filename", "chunk_text", "page", "section"}.
-
-    Returns:
-        The same list of dicts, each with a new "embedding" key holding
-        a list[float] — the chunk's vector representation.
-
-    What embeddings are: an embedding model maps a piece of text to a
-    fixed-length vector of numbers positioned so that texts with
-    similar MEANING end up close together in vector space (measured
-    by cosine similarity), even if they share no exact words. This is
-    what lets retrieval find the chunks most relevant to a question:
-    embed the question, then look for the nearest chunk vectors.
-    """
+    """Generate an embedding vector for every chunk and attach it in memory."""
     model = get_embedding_model()
-
-    # Encode all chunk texts in one batched call — much faster than
-    # calling encode() once per chunk.
     texts = [chunk["chunk_text"] for chunk in chunks]
     vectors = model.encode(texts, show_progress_bar=False)
 
-    # Attach each vector to its chunk dict. Converting the numpy row
-    # to a plain Python list keeps the chunk objects framework-free.
     for chunk, vector in zip(chunks, vectors):
         chunk["embedding"] = vector.tolist()
 
@@ -259,31 +233,14 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
 
 
 def ingest_file(file_path: str) -> int:
-    """
-    Run the full pipeline (load -> chunk -> embed -> save) for ONE file.
-
-    Used by the API when a user uploads a single document —
-    unlike main(), which re-processes the whole data/ folder. Reuses
-    the exact same pipeline functions, just scoped to one file.
-
-    Returns the number of chunks stored. Raises ValueError for
-    unsupported file types; other errors (corrupt PDF, database
-    failure) propagate to the caller, which decides how to show them.
-    """
+    """Run the full pipeline (load -> chunk -> embed -> save) for ONE file."""
     filename = os.path.basename(file_path)
-    lower_name = filename.lower()
-
-    if lower_name.endswith(".txt"):
-        text = load_txt_file(file_path)
-        document = {"filename": filename, "text": text, "pages": None}
-    elif lower_name.endswith(".pdf"):
-        pages = load_pdf_file(file_path)
-        full_text = "\n".join(text for _, text in pages)
-        document = {"filename": filename, "text": full_text, "pages": pages}
-    else:
+    parser = default_registry.get_parser(filename)
+    if not parser:
         raise ValueError(f"Unsupported file type: {filename}")
 
-    chunks = embed_chunks(chunk_documents([document]))
+    norm_doc = parser.parse(file_path)
+    chunks = embed_chunks(chunk_documents([norm_doc]))
     if not chunks:
         return 0
 

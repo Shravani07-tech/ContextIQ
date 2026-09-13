@@ -70,6 +70,15 @@ def save_chunks(chunks: list[dict]) -> int:
         section = chunk.get("section")
         if section:
             meta["section"] = str(section)
+        slide = chunk.get("slide")
+        if slide is not None:
+            meta["slide"] = int(slide)
+        sheet = chunk.get("sheet")
+        if sheet:
+            meta["sheet"] = str(sheet)
+        extraction_method = chunk.get("extraction_method")
+        if extraction_method:
+            meta["extraction_method"] = str(extraction_method)
         document_id = chunk.get("document_id")
         if document_id:
             meta["document_id"] = str(document_id)
