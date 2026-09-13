@@ -10,15 +10,19 @@ your machine (no cloud APIs, no data leaves your computer).
 
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20Ollama-blue)
 
-## Features (ContextIQ 2.0 — Phase A: Ingestion Expansion)
+## Features (ContextIQ 2.0 — Phase B: Knowledge Organization)
 
+- **Persistent Collections & Workspaces**: Organize documents into custom, persistent logical collections (stored locally in SQLite) with total backwards compatibility.
+- **Document Tags & Metadata Management**: Apply normalized, searchable tags (`#research`, `#finance`) and inspect detailed document metadata (file size, file type, page/slide/sheet count, chunk count, extraction method).
+- **Collection-Aware Retrieval**: Scope vector and BM25 candidate retrieval to active collections or tags before reranking and LLM context construction, enforcing strict cross-collection data isolation.
+- **Collection-Aware Chat & Research Mode**: Seamlessly switch between global document search and scoped collection chat/research without re-embedding or modifying ChromaDB vectors.
+- **Unified Document Library UI**: Interactive workspace UI featuring collection creation/management, active scope selectors (`🌐 All Documents` vs `📁 Collection`), tag filtering pills, type filters, and document movement dropdowns.
 - **Multi-Format Ingestion Engine**: Supports 8 file format categories: `.pdf`, `.txt`, `.docx` (Word), `.pptx` (PowerPoint), `.xlsx` (Excel), `.csv`, `.md`/`.markdown`, and `.html`/`.htm`.
 - **Local OCR Fallback**: Page-aware local OCR processing using Tesseract & Poppler for scanned or image-based PDFs when text extraction finds no readable text.
 - **Rich Citation Metadata**: Preserves document structure with 1-based page numbers (`PDF`), slide numbers (`PPTX`), worksheet names (`XLSX`), and section headings (`DOCX`, `Markdown`, `HTML`) displayed in source citation cards.
 - **Hybrid Retrieval**: Combines semantic vector retrieval (ChromaDB) with lexical keyword matching (BM25 via `rank-bm25`) fused via Reciprocal Rank Fusion (RRF, $k=60$) for higher retrieval accuracy.
 - **Cross-Encoder Reranking**: Candidate passages are reranked using a lightweight local `cross-encoder/ms-marco-MiniLM-L-2-v2` neural model.
-- **Multi-Document Research Mode**: Synthesizes structured markdown summaries across all indexed documents using a single LLM call.
-- **Dynamic Frontend**: Modern responsive Chat UI featuring a "Chat | Research" mode toggle, active document filter dropdown, source expansion cards, and multi-format document dropzone.
+- **Multi-Document Research Mode**: Synthesizes structured markdown summaries across indexed documents using a single LLM call.
 
 ## How it works
 
