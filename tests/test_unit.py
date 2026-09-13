@@ -124,7 +124,7 @@ class AnswerQuestionTests(unittest.TestCase):
         answer_question("q", retriever, llm, document_filter="doc_a.txt")
 
         retriever.retrieve.assert_called_once_with(
-            "q", document_filter="doc_a.txt"
+            "q", document_filter="doc_a.txt", collection_id=None, tag=None, tags=None
         )
 
     def test_history_is_forwarded_to_llm(self):
@@ -168,7 +168,9 @@ class AnswerQuestionTests(unittest.TestCase):
 
         result = answer_question("q", retriever, llm, document_filter="doc_a.txt")
 
-        retriever.retrieve.assert_called_once_with("q", document_filter="doc_a.txt")
+        retriever.retrieve.assert_called_once_with(
+            "q", document_filter="doc_a.txt", collection_id=None, tag=None, tags=None
+        )
         for source in result["sources"]:
             self.assertEqual(source["filename"], "doc_a.txt",
                              "Only doc_a sources must appear")
@@ -184,7 +186,9 @@ class AnswerQuestionTests(unittest.TestCase):
 
         result = answer_question("q", retriever, llm, document_filter="doc_b.txt")
 
-        retriever.retrieve.assert_called_once_with("q", document_filter="doc_b.txt")
+        retriever.retrieve.assert_called_once_with(
+            "q", document_filter="doc_b.txt", collection_id=None, tag=None, tags=None
+        )
         for source in result["sources"]:
             self.assertEqual(source["filename"], "doc_b.txt",
                              "Only doc_b sources must appear")
@@ -201,7 +205,9 @@ class AnswerQuestionTests(unittest.TestCase):
 
         result = answer_question("compare", retriever, llm, document_filter=None)
 
-        retriever.retrieve.assert_called_once_with("compare", document_filter=None)
+        retriever.retrieve.assert_called_once_with(
+            "compare", document_filter=None, collection_id=None, tag=None, tags=None
+        )
         filenames = {s["filename"] for s in result["sources"]}
         self.assertIn("doc_a.txt", filenames)
         self.assertIn("doc_b.txt", filenames)
@@ -261,7 +267,9 @@ class AnswerQuestionStreamTests(unittest.TestCase):
 
         list(answer_question_stream("q", retriever, llm, document_filter="a.pdf"))
 
-        retriever.retrieve.assert_called_once_with("q", document_filter="a.pdf")
+        retriever.retrieve.assert_called_once_with(
+            "q", document_filter="a.pdf", collection_id=None, tag=None, tags=None
+        )
 
     def test_stream_history_forwarded_to_llm(self):
         """History must reach generate_stream() in the streaming path."""
@@ -777,7 +785,9 @@ class ResearchModeTests(unittest.TestCase):
         from research import research_question
         result = research_question("What is the comparison?")
         
-        mock_retriever.retrieve.assert_called_once_with("What is the comparison?", top_k=12, document_filter=None)
+        mock_retriever.retrieve.assert_called_once_with(
+            "What is the comparison?", top_k=12, document_filter=None, collection_id=None, tag=None, tags=None
+        )
         self.assertEqual(result["doc_count"], 2)
         self.assertEqual(result["answer"], "## Executive Summary\nSummary text...")
         self.assertEqual(len(result["sources"]), 2)
