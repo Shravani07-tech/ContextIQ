@@ -6,15 +6,24 @@
 import type {
   ChatResponse,
   ClearDatabaseResponse,
+  Collection,
+  CollectionCreate,
+  CollectionListResponse,
+  CollectionUpdate,
   DeleteDocumentResponse,
+  DocumentDetail,
+  DocumentListResponse,
   DocumentsResponse,
   HealthResponse,
   HistoryMessage,
   IndexResponse,
   Source,
   StatusResponse,
+  TagActionResponse,
+  TagListResponse,
   UploadResponse,
 } from "@/lib/types";
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -92,28 +101,95 @@ export const api = {
   health: () => request<HealthResponse>("/health"),
 
   /** GET /documents — filenames currently in the vector database. */
-  documents: () => request<DocumentsResponse>("/documents"),
+  documents: (params?: { collection_id?: string; tag?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.collection_id) query.set("collection_id", params.collection_id);
+    if (params?.tag) query.set("tag", params.tag);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return request<DocumentsResponse>(`/documents${qs}`);
+  },
+
+  /** GET /documents?detail=true — rich document metadata details. */
+  detailedDocuments: (params?: { collection_id?: string; tag?: string }) => {
+    const query = new URLSearchParams({ detail: "true" });
+    if (params?.collection_id) query.set("collection_id", params.collection_id);
+    if (params?.tag) query.set("tag", params.tag);
+    return request<DocumentListResponse>(`/documents?${query.toString()}`);
+  },
+
+  /** GET /documents/{filename} — metadata detail for one document. */
+  documentDetail: (filename: string) =>
+    request<DocumentDetail>(`/documents/${encodeURIComponent(filename)}`),
+
+  /** PATCH /documents/{filename} — assign or move document to a collection. */
+  moveDocument: (filename: string, collectionId: string | null) =>
+    request<DocumentDetail>(`/documents/${encodeURIComponent(filename)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ collection_id: collectionId }),
+    }),
+
+  /** POST /documents/{filename}/tags — add a tag to a document. */
+  addTag: (filename: string, tag: string) =>
+    request<TagActionResponse>(`/documents/${encodeURIComponent(filename)}/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tag }),
+    }),
+
+  /** DELETE /documents/{filename}/tags/{tag} — remove a tag from a document. */
+  removeTag: (filename: string, tag: string) =>
+    request<TagActionResponse>(
+      `/documents/${encodeURIComponent(filename)}/tags/${encodeURIComponent(tag)}`,
+      { method: "DELETE" },
+    ),
+
+  /** GET /tags — list all unique system tags. */
+  tags: () => request<TagListResponse>("/tags"),
+
+  /** GET /collections — list all collections. */
+  collections: () => request<CollectionListResponse>("/collections"),
+
+  /** POST /collections — create a new collection. */
+  createCollection: (data: CollectionCreate) =>
+    request<Collection>("/collections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+
+  /** PATCH /collections/{id} — update collection metadata. */
+  updateCollection: (id: string, data: CollectionUpdate) =>
+    request<Collection>(`/collections/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+
+  /** DELETE /collections/{id} — delete collection safely (documents revert to Uncategorized). */
+  deleteCollection: (id: string) =>
+    request<{ status: string; collection_id: string }>(`/collections/${id}`, {
+      method: "DELETE",
+    }),
 
   /** GET /status — knowledge-base counts + pipeline settings. */
   status: () => request<StatusResponse>("/status"),
 
   /**
    * POST /upload — stage PDF/TXT files into the backend's data folder.
-   *
-   * Uses XMLHttpRequest instead of fetch because fetch cannot report
-   * UPLOAD progress; XHR's upload.onprogress gives the byte-level
-   * percentage the dropzone's progress bar displays. Returns both the
-   * promise AND a cancel() handle (XHR supports .abort() natively),
-   * so the UI can offer a real Cancel button instead of just waiting
-   * it out.
+   * Optionally assigns uploaded files directly to a target collection_id.
    */
   upload: (
     files: File[],
     onProgress?: (percent: number) => void,
+    collectionId?: string | null,
   ): { promise: Promise<UploadResponse>; cancel: () => void } => {
     const xhr = new XMLHttpRequest();
     const promise = new Promise<UploadResponse>((resolve, reject) => {
-      xhr.open("POST", `${API_URL}/upload`);
+      const url = collectionId
+        ? `${API_URL}/upload?collection_id=${encodeURIComponent(collectionId)}`
+        : `${API_URL}/upload`;
+      xhr.open("POST", url);
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
@@ -149,11 +225,16 @@ export const api = {
       body: JSON.stringify({ filenames: filenames ?? null }),
     }),
 
-  /** POST /chat -- grounded answer + sources for one question.
-      180s timeout: double the worst normal CPU-generation time. */
+  /** POST /chat -- grounded answer + sources for one question. */
   chat: (
     question: string,
-    opts?: { history?: HistoryMessage[]; documentFilter?: string | null },
+    opts?: {
+      history?: HistoryMessage[];
+      documentFilter?: string | null;
+      collectionId?: string | null;
+      tag?: string | null;
+      tags?: string[] | null;
+    },
   ) =>
     request<ChatResponse>(
       "/chat",
@@ -164,6 +245,9 @@ export const api = {
           question,
           history: opts?.history ?? [],
           document_filter: opts?.documentFilter ?? null,
+          collection_id: opts?.collectionId ?? null,
+          tag: opts?.tag ?? null,
+          tags: opts?.tags ?? null,
         }),
       },
       180_000,
@@ -171,16 +255,7 @@ export const api = {
 
   /**
    * POST /chat/stream — same grounded pipeline as chat(), but the
-   * answer arrives progressively over Server-Sent Events instead of
-   * as one JSON blob.
-   *
-   * Takes callbacks rather than returning a promise-of-the-answer,
-   * since the whole point is delivering partial results as they
-   * arrive. `signal` is the caller's own AbortController — when it
-   * fires, this function stops silently (no callback), because the
-   * caller already knows it stopped deliberately (it's the one that
-   * called .abort()) and owns finalizing the UI state from whatever
-   * was accumulated so far.
+   * answer arrives progressively over Server-Sent Events.
    */
   chatStream: async (
     question: string,
@@ -194,6 +269,9 @@ export const api = {
     opts?: {
       history?: HistoryMessage[];
       documentFilter?: string | null;
+      collectionId?: string | null;
+      tag?: string | null;
+      tags?: string[] | null;
     },
   ): Promise<void> => {
     let response: Response;
@@ -205,6 +283,9 @@ export const api = {
           question,
           history: opts?.history ?? [],
           document_filter: opts?.documentFilter ?? null,
+          collection_id: opts?.collectionId ?? null,
+          tag: opts?.tag ?? null,
+          tags: opts?.tags ?? null,
         }),
         signal,
       });
@@ -229,7 +310,6 @@ export const api = {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
-        // SSE frames are separated by a blank line.
         let sepIndex: number;
         while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
           const frame = buffer.slice(0, sepIndex);
@@ -251,8 +331,6 @@ export const api = {
           }
         }
       }
-      // Stream closed without an explicit "done" event — treat as
-      // complete rather than leaving the caller waiting forever.
       callbacks.onDone();
     } catch {
       if (signal.aborted) return;
@@ -264,8 +342,7 @@ export const api = {
   clearDatabase: () =>
     request<ClearDatabaseResponse>("/database", { method: "DELETE" }),
 
-  /** DELETE /documents/{filename} — remove one document; every other
-      document in the knowledge base is untouched. */
+  /** DELETE /documents/{filename} — remove one document. */
   deleteDocument: (filename: string) =>
     request<DeleteDocumentResponse>(
       `/documents/${encodeURIComponent(filename)}`,
@@ -273,10 +350,7 @@ export const api = {
     ),
 
   /**
-   * POST /research/stream — research synthesis across ALL documents.
-   *
-   * Same SSE event format as chatStream, with an extra doc_count field
-   * on the sources event indicating how many documents contributed.
+   * POST /research/stream — research synthesis across scoped or all documents.
    */
   researchStream: async (
     question: string,
@@ -287,13 +361,23 @@ export const api = {
       onError: (detail: string) => void;
     },
     signal: AbortSignal,
+    opts?: {
+      collectionId?: string | null;
+      tag?: string | null;
+      tags?: string[] | null;
+    },
   ): Promise<void> => {
     let response: Response;
     try {
       response = await fetch(`${API_URL}/research/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({
+          question,
+          collection_id: opts?.collectionId ?? null,
+          tag: opts?.tag ?? null,
+          tags: opts?.tags ?? null,
+        }),
         signal,
       });
     } catch {

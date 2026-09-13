@@ -38,7 +38,9 @@ import type {
   HistoryMessage,
   Source,
 } from "@/lib/types";
+import { useActiveCollection } from "./useCollections";
 import { useSessions } from "./useSessions";
+
 
 // ---------------------------------------------------------------------------
 // Disambiguation detection
@@ -171,6 +173,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [queryClient, setMessages],
   );
 
+  const [activeCollectionId] = useActiveCollection();
+
   const runQuery = useCallback(
     (question: string) => {
       const controller = new AbortController();
@@ -183,9 +187,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       let accumulated = "";
       let sources: Source[] = [];
 
-      // Build bounded history from the current session's messages.
-      // Only user and assistant roles are sent; system messages are UI-only.
-      // Cap at 6 messages (enforced by the backend schema too).
       const sessionMessages = activeSession?.messages ?? [];
       const history: HistoryMessage[] = sessionMessages
         .filter((m) => m.role === "user" || m.role === "assistant")
@@ -236,13 +237,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           },
         },
         controller.signal,
-        { history, documentFilter },
+        { history, documentFilter, collectionId: activeCollectionId },
       );
     },
-    [finalizeAnswer, setMessages, activeSession, documentFilter],
+    [finalizeAnswer, setMessages, activeSession, documentFilter, activeCollectionId],
   );
 
-  // Research-mode query: routes to /research/stream, no document filter.
+  // Research-mode query: routes to /research/stream, respecting activeCollectionId scope.
   const runResearchQuery = useCallback(
     (question: string) => {
       const controller = new AbortController();
@@ -299,10 +300,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           },
         },
         controller.signal,
+        { collectionId: activeCollectionId },
       );
     },
-    [finalizeAnswer, setMessages],
+    [finalizeAnswer, setMessages, activeCollectionId],
   );
+
 
   // -------------------------------------------------------------------------
   const sendMessage = useCallback(

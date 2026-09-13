@@ -140,3 +140,62 @@ export interface StatusResponse {
   chunk_overlap: number;
   top_k: number;
 }
+
+// --- Collections & Workspace Types -----------------------------------------
+
+export interface Collection {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  icon: string;
+  created_at: string;
+  updated_at: string;
+  document_count: number;
+}
+
+export interface CollectionCreate {
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+}
+
+export interface CollectionUpdate {
+  name?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+}
+
+export interface CollectionListResponse {
+  collections: Collection[];
+}
+
+export interface DocumentDetail {
+  document_id: string;
+  filename: string;
+  file_type: string;
+  file_size: number;
+  chunk_count: number;
+  extraction_method: string;
+  collection_id: string | null;
+  collection_name: string | null;
+  tags: string[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface DocumentListResponse {
+  documents: DocumentDetail[];
+}
+
+export interface TagListResponse {
+  tags: string[];
+}
+
+export interface TagActionResponse {
+  filename: string;
+  tags: string[];
+}
+

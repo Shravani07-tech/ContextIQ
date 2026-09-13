@@ -15,8 +15,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useActiveCollection } from "@/hooks/useCollections";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { api } from "@/lib/api";
+
 import type { DocumentsResponse, FileResult } from "@/lib/types";
 
 const ALLOWED_EXTENSIONS = [
@@ -92,7 +94,7 @@ export function useUpload() {
     }
   }
 
-  useEffect(() => clearOutcomeTimer, []);
+  const [activeCollectionId] = useActiveCollection();
 
   const mutation = useMutation({
     mutationFn: async (files: File[]) => {
@@ -108,7 +110,11 @@ export function useUpload() {
 
       setPhase("uploading");
       setProgress(0);
-      const { promise, cancel } = api.upload(files, setProgress);
+      const { promise, cancel } = api.upload(
+        files,
+        setProgress,
+        activeCollectionId,
+      );
       cancelRef.current = cancel;
       const uploaded = await promise;
       cancelRef.current = null;
@@ -125,6 +131,7 @@ export function useUpload() {
 
       return { indexed: indexed?.files ?? [], serverRejected, existing, sizeByName };
     },
+
     onSuccess: ({ indexed, serverRejected, existing, sizeByName }) => {
       for (const f of indexed) {
         if (f.status === "indexed") {
