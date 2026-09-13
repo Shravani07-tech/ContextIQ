@@ -92,6 +92,8 @@ class PDFParser(BaseParser):
         return filename.lower().endswith(".pdf")
 
     def parse(self, file_path: str) -> NormalizedDocument:
+        from ocr_service import default_ocr_service
+
         filename = os.path.basename(file_path)
         reader = PdfReader(file_path)
         pages: List[Tuple[int, str]] = []
@@ -100,9 +102,24 @@ class PDFParser(BaseParser):
             text = page.extract_text()
             if text and text.strip():
                 pages.append((page_num, text))
+            else:
+                pages.append((page_num, ""))
+
+        extraction_method = "text"
+        non_empty_pages = [(p_num, txt) for p_num, txt in pages if txt.strip()]
+
+        if not non_empty_pages:
+            logger.info("No text found in '%s'; attempting local OCR fallback...", filename)
+            ocr_pages, method = default_ocr_service.ocr_pdf(file_path)
+            if ocr_pages:
+                pages = ocr_pages
+                extraction_method = method
+            else:
+                pages = non_empty_pages
+        else:
+            pages = non_empty_pages
 
         full_text = "\n".join(text for _, text in pages)
-        extraction_method = "text"
 
         return NormalizedDocument(
             filename=filename,
@@ -110,9 +127,10 @@ class PDFParser(BaseParser):
             file_type="pdf",
             document_id=filename,
             source_path=file_path,
-            pages=pages,
+            pages=pages if pages else None,
             extraction_method=extraction_method,
         )
+
 
 
 class DOCXParser(BaseParser):
