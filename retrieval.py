@@ -7,29 +7,26 @@
 #   VECTOR:  query → ChromaDB cosine similarity → top TOP_K*2 candidates
 #   LEXICAL: query → BM25 keyword search       → top TOP_K*2 candidates
 #
-# Both paths respect the document_filter so single-document mode is
-# correctly enforced in BOTH paths — not just the vector path.
+# Both paths respect the document_filter, collection_id, and tag filters
+# so single-document and collection-scoped retrieval are correctly enforced
+# in BOTH paths — candidate filtering happens BEFORE or DURING retrieval.
 #
 # After fusion, the candidate pool is passed to the reranker (reranker.py)
 # and trimmed to TOP_K. The boundary-injection logic from the original
 # Retriever is preserved in HybridRetriever._ensure_document_boundaries().
-#
-# The BM25 index is rebuilt from the Chroma corpus on first use and
-# cached for the process lifetime (the corpus changes only when a
-# document is uploaded or deleted, after which a new request hits the
-# refreshed corpus automatically because BM25Retriever re-reads Chroma).
 
 from __future__ import annotations
 
 import logging
 import math
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Set
 
 import chromadb.errors
 
 from config import BGE_QUERY_PREFIX, TOP_K
 from embedding_model import get_embedding_model
+from metadata_store import MetadataStore
 from vector_store import get_collection
 
 if TYPE_CHECKING:
@@ -45,12 +42,7 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
 
 
 def _tokenize(text: str) -> list[str]:
-    """Lowercase word tokenizer (no stemming, no stopwords).
-
-    Kept lightweight on purpose: BM25 at this scale (thousands of chunks,
-    not millions) does not need a full NLP pipeline, and keeping the
-    tokenizer identical between indexing and querying is what matters.
-    """
+    """Lowercase word tokenizer (no stemming, no stopwords)."""
     return _TOKEN_RE.findall(text.lower())
 
 
@@ -80,10 +72,7 @@ def reciprocal_rank_fusion(
     Fuse multiple ranked lists of chunk_ids using Reciprocal Rank Fusion.
 
     RRF score for chunk i across lists: Σ 1/(k + rank_i)
-    where rank_i is 1-based. k=60 is the standard value from Cormack
-    et al. (2009); it reduces sensitivity to top-rank outliers.
-
-    Returns chunk_ids sorted by descending RRF score (no ties broken).
+    where rank_i is 1-based. k=60 is the standard value from Cormack et al. (2009).
     """
     scores: dict[str, float] = {}
     for ranked in ranked_lists:
@@ -100,13 +89,7 @@ class HybridRetriever:
     """
     Two-path retriever: vector (Chroma) + lexical (BM25) → RRF → reranker.
 
-    Drop-in replacement for rag.Retriever: exposes the same
-    embed_query() and retrieve() methods plus a collection attribute
-    (used by RagService._enrich_sources() to fetch chunk previews).
-
-    Boundary injection (_ensure_document_boundaries) is carried over
-    verbatim from the original Retriever to preserve the cross-document
-    contamination fix.
+    Supports collection-scoped, tag-scoped, and document-level candidate filtering.
     """
 
     HEAD_CHUNKS = 2
@@ -131,7 +114,7 @@ class HybridRetriever:
         self,
         query_vec: list[float],
         top_n: int,
-        document_filter: str | None,
+        allowed_filenames: Optional[Set[str]] = None,
     ) -> list[tuple[str, float]]:
         """Return (chunk_id, similarity) pairs from Chroma vector search."""
         try:
@@ -144,8 +127,14 @@ class HybridRetriever:
             return []
 
         filter_clause: dict | None = None
-        if document_filter:
-            filter_clause = {"filename": document_filter}
+        if allowed_filenames is not None:
+            if len(allowed_filenames) == 0:
+                return []
+            elif len(allowed_filenames) == 1:
+                filter_clause = {"filename": list(allowed_filenames)[0]}
+            else:
+                filter_clause = {"filename": {"$in": list(allowed_filenames)}}
+
             try:
                 doc_check = self.collection.get(
                     where=filter_clause, include=[], limit=1
@@ -184,7 +173,7 @@ class HybridRetriever:
         self,
         query: str,
         top_n: int,
-        document_filter: str | None,
+        allowed_filenames: Optional[Set[str]] = None,
     ) -> list[tuple[str, float]]:
         """Return (chunk_id, bm25_score) pairs from BM25 search."""
         global _bm25_cache, _bm25_doc_ids, _bm25_filenames
@@ -201,7 +190,6 @@ class HybridRetriever:
         # Warm/rebuild the cached BM25 index if needed.
         if _bm25_cache is None:
             try:
-                # Fetch all documents in the corpus for the global index
                 records = self.collection.get(include=["documents", "metadatas"])
             except chromadb.errors.NotFoundError:
                 self.collection = get_collection()
@@ -224,17 +212,15 @@ class HybridRetriever:
         if not tokenized_query or not _bm25_doc_ids:
             return []
 
-        # Query scores across the whole corpus
         scores = _bm25_cache.get_scores(tokenized_query)
         results = []
         for idx, (cid, fname) in enumerate(zip(_bm25_doc_ids, _bm25_filenames)):
-            if document_filter and fname != document_filter:
+            if allowed_filenames is not None and fname not in allowed_filenames:
                 continue
             score = scores[idx]
             if score > 0.0:
                 results.append((cid, float(score)))
 
-        # Sort descending and take top_n
         results.sort(key=lambda x: -x[1])
         return results[:top_n]
 
@@ -247,36 +233,63 @@ class HybridRetriever:
         query: str,
         top_k: int = TOP_K,
         document_filter: str | None = None,
+        collection_id: str | None = None,
+        tag: str | None = None,
+        tags: list[str] | None = None,
     ) -> list[dict]:
         """
         Hybrid retrieval: vector + BM25 → RRF → reranker → top_k chunks.
 
-        The two candidate pools each contain top_k*2 results (over-fetching
-        before fusion is standard: more candidates → better fusion quality,
-        at the cost of slightly more memory — still well within reason for
-        typical corpus sizes). RRF fuses the ordered lists into a single
-        ranking. The reranker then picks the final top_k.
+        Optional candidate scoping parameters:
+        - document_filter: single filename restrict
+        - collection_id: collection ID restrict
+        - tag / tags: tag filter restrict (AND matching for multiple tags)
         """
-        candidate_n = top_k * 2
+        allowed_filenames: set[str] | None = None
 
+        if collection_id is not None or tag is not None or tags:
+            tag_filter = tag
+            if tags and len(tags) == 1:
+                tag_filter = tags[0]
+
+            docs_in_scope = MetadataStore.list_documents(
+                collection_id=collection_id, tag=tag_filter
+            )
+            current_allowed = {d["filename"] for d in docs_in_scope}
+
+            if tags and len(tags) > 1:
+                for t in tags[1:]:
+                    more_docs = MetadataStore.list_documents(tag=t)
+                    t_filenames = {d["filename"] for d in more_docs}
+                    current_allowed.intersection_update(t_filenames)
+
+            allowed_filenames = current_allowed
+
+        if document_filter is not None:
+            if allowed_filenames is None:
+                allowed_filenames = {document_filter}
+            else:
+                allowed_filenames = allowed_filenames.intersection({document_filter})
+
+        # If scope filters were provided but matched 0 documents, return empty immediately.
+        if allowed_filenames is not None and len(allowed_filenames) == 0:
+            return []
+
+        candidate_n = top_k * 2
         query_vec = self.embed_query(query)
 
-        # Run both paths independently.
-        vector_hits = self._vector_retrieve(query_vec, candidate_n, document_filter)
-        lexical_hits = self._lexical_retrieve(query, candidate_n, document_filter)
+        vector_hits = self._vector_retrieve(query_vec, candidate_n, allowed_filenames)
+        lexical_hits = self._lexical_retrieve(query, candidate_n, allowed_filenames)
 
         if not vector_hits and not lexical_hits:
             return []
 
-        # RRF: fuse by chunk_id rank order.
         vector_ids = [cid for cid, _ in vector_hits]
         lexical_ids = [cid for cid, _ in lexical_hits]
         fused_ids = reciprocal_rank_fusion(vector_ids, lexical_ids)
 
-        # Cap the candidate pool for reranking.
         candidate_ids = fused_ids[: top_k * 3]
 
-        # Fetch full records for candidates.
         try:
             records = self.collection.get(
                 ids=candidate_ids,
@@ -286,10 +299,8 @@ class HybridRetriever:
             self.collection = get_collection()
             return []
 
-        # Build similarity map from vector path for scoring.
         sim_map = {cid: sim for cid, sim in vector_hits}
 
-        # Assemble hits preserving RRF order.
         id_to_record: dict = {}
         for cid, text, meta, emb in zip(
             records["ids"],
@@ -304,8 +315,6 @@ class HybridRetriever:
             if cid not in id_to_record:
                 continue
             text, meta, emb = id_to_record[cid]
-            # Use vector similarity if available; fall back to cosine from
-            # stored embedding (same formula as Retriever._ensure_document_boundaries).
             if cid in sim_map:
                 similarity = sim_map[cid]
             else:
@@ -328,11 +337,9 @@ class HybridRetriever:
                 }
             )
 
-        # Apply reranking (neural cross-encoder or similarity fallback).
         from reranker import rerank
         hits = rerank(query, hits, top_k)
 
-        # Inject document boundary chunks (head + tail) for the dominant doc.
         self._ensure_document_boundaries(hits, query_vec, document_filter)
 
         return hits
@@ -345,8 +352,7 @@ class HybridRetriever:
     ) -> None:
         """
         Guarantee the dominant document's opening AND closing chunks are
-        in the results. Carried over verbatim from rag.Retriever to
-        preserve the cross-document contamination fix.
+        in the results.
         """
         if not hits:
             return
