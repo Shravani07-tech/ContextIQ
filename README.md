@@ -10,13 +10,15 @@ your machine (no cloud APIs, no data leaves your computer).
 
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20Ollama-blue)
 
-## Features (v1.0.0 Release)
+## Features (ContextIQ 2.0 — Phase A: Ingestion Expansion)
 
+- **Multi-Format Ingestion Engine**: Supports 8 file format categories: `.pdf`, `.txt`, `.docx` (Word), `.pptx` (PowerPoint), `.xlsx` (Excel), `.csv`, `.md`/`.markdown`, and `.html`/`.htm`.
+- **Local OCR Fallback**: Page-aware local OCR processing using Tesseract & Poppler for scanned or image-based PDFs when text extraction finds no readable text.
+- **Rich Citation Metadata**: Preserves document structure with 1-based page numbers (`PDF`), slide numbers (`PPTX`), worksheet names (`XLSX`), and section headings (`DOCX`, `Markdown`, `HTML`) displayed in source citation cards.
 - **Hybrid Retrieval**: Combines semantic vector retrieval (ChromaDB) with lexical keyword matching (BM25 via `rank-bm25`) fused via Reciprocal Rank Fusion (RRF, $k=60$) for higher retrieval accuracy.
-- **Cross-Encoder Reranking**: Candidate passages are reranked using a lightweight local `cross-encoder/ms-marco-MiniLM-L-2-v2` neural model (degrades gracefully to vector similarity on low-resource hardware).
-- **Page-Aware PDF Ingestion**: Extracts and preserves 1-based page numbers from PDF files, displaying page badges in source citations.
-- **Multi-Document Research Mode**: Synthesizes structured markdown summaries across all indexed documents using a single LLM call to compare findings, note differences, and flag research gaps.
-- **Dynamic Frontend**: Modern responsive Chat UI featuring a "Chat | Research" mode toggle, active document filter dropdown, source expansion cards, and copy/regenerate buttons.
+- **Cross-Encoder Reranking**: Candidate passages are reranked using a lightweight local `cross-encoder/ms-marco-MiniLM-L-2-v2` neural model.
+- **Multi-Document Research Mode**: Synthesizes structured markdown summaries across all indexed documents using a single LLM call.
+- **Dynamic Frontend**: Modern responsive Chat UI featuring a "Chat | Research" mode toggle, active document filter dropdown, source expansion cards, and multi-format document dropzone.
 
 ## How it works
 
