@@ -85,6 +85,9 @@ def build_prompt(question: str, chunks: list[dict]) -> str:
     context_blocks = [
         f"[Source {i}: {chunk['filename']} ({chunk['chunk_id']})]"
         + (f" [Page {chunk['page']}]" if chunk.get("page") else "")
+        + (f" [Slide {chunk['slide']}]" if chunk.get("slide") else "")
+        + (f" [Sheet: {chunk['sheet']}]" if chunk.get("sheet") else "")
+        + (f" [Section: {chunk['section']}]" if chunk.get("section") else "")
         + f"\n{chunk['chunk_text']}"
         for i, chunk in enumerate(chunks, 1)
     ]
@@ -112,8 +115,8 @@ def answer_question(
 
     Returns a dict with:
         answer  -> the model's grounded reply (str)
-        sources -> list of {filename, chunk_id, similarity, page, section} for the
-                   chunks the answer was based on
+        sources -> list of {filename, chunk_id, similarity, page, slide, sheet, section, extraction_method}
+                   for the chunks the answer was based on
 
     If retrieval finds nothing (empty database), the LLM is not
     called at all -- we return the honest fallback reply directly.
@@ -140,7 +143,10 @@ def answer_question(
             "chunk_id": chunk["chunk_id"],
             "similarity": chunk["similarity"],
             "page": chunk.get("page"),
+            "slide": chunk.get("slide"),
+            "sheet": chunk.get("sheet"),
             "section": chunk.get("section"),
+            "extraction_method": chunk.get("extraction_method"),
             "document_id": chunk.get("document_id"),
         }
         for chunk in chunks

@@ -320,7 +320,10 @@ class HybridRetriever:
                     "chunk_id": cid,
                     "chunk_text": text,
                     "page": meta.get("page"),
+                    "slide": meta.get("slide"),
+                    "sheet": meta.get("sheet"),
                     "section": meta.get("section"),
+                    "extraction_method": meta.get("extraction_method"),
                     "document_id": meta.get("document_id"),
                 }
             )
@@ -410,7 +413,10 @@ class HybridRetriever:
                 "chunk_id": chunk_id,
                 "chunk_text": labels[chunk_id] + text,
                 "page": meta.get("page"),
+                "slide": meta.get("slide"),
+                "sheet": meta.get("sheet"),
                 "section": meta.get("section"),
+                "extraction_method": meta.get("extraction_method"),
                 "document_id": meta.get("document_id"),
             }
             idx = int(chunk_id.rsplit("-", 1)[1])

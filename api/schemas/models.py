@@ -83,9 +83,21 @@ class Source(BaseModel):
         default=None,
         description="1-based page number within the source document, if known",
     )
+    slide: int | None = Field(
+        default=None,
+        description="1-based slide number within the presentation, if known",
+    )
+    sheet: str | None = Field(
+        default=None,
+        description="Worksheet name within the spreadsheet, if known",
+    )
     section: str | None = Field(
         default=None,
         description="Document section heading the chunk belongs to, if known",
+    )
+    extraction_method: str | None = Field(
+        default=None,
+        description="Method used to extract text ('text' or 'ocr')",
     )
     document_id: str | None = Field(
         default=None,
