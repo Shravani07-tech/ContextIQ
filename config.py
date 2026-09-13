@@ -79,6 +79,15 @@ BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 LLM_MODEL_NAME = os.getenv("CONTEXTIQ_LLM_MODEL", "llama3.2")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
+# Automatic document summarization settings
+SUMMARY_ENABLED = os.getenv("CONTEXTIQ_SUMMARY_ENABLED", "true").lower() in ("true", "1", "yes")
+SUMMARY_MODEL_NAME = os.getenv("CONTEXTIQ_SUMMARY_MODEL", LLM_MODEL_NAME)
+SUMMARY_MAX_INPUT_CHARS = _env_int("CONTEXTIQ_SUMMARY_MAX_INPUT_CHARS", 12000)
+SUMMARY_MAX_CHUNKS = _env_int("CONTEXTIQ_SUMMARY_MAX_CHUNKS", 10)
+SUMMARY_MAX_KEY_POINTS = _env_int("CONTEXTIQ_SUMMARY_MAX_KEY_POINTS", 7)
+SUMMARY_TIMEOUT = _env_int("CONTEXTIQ_SUMMARY_TIMEOUT", 60)
+
+
 # Origins allowed to call the REST API from a browser (the Next.js
 # dev server by default) — comma-separated when set via environment.
 CORS_ORIGINS = [

@@ -83,7 +83,22 @@ def init_db() -> None:
             );
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS document_summaries (
+                document_id TEXT PRIMARY KEY,
+                filename TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL DEFAULT 'pending',
+                summary TEXT DEFAULT '',
+                key_points TEXT DEFAULT '[]',
+                error TEXT DEFAULT NULL,
+                generated_at TEXT DEFAULT NULL,
+                version INTEGER DEFAULT 1
+            );
+            """
+        )
         conn.commit()
+
 
 
 # Initialize database on module import
@@ -421,3 +436,96 @@ class MetadataStore:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM tags ORDER BY name ASC")
             return [r["name"] for r in cursor.fetchall()]
+
+    # --- Document Summary Operations ---
+
+    @staticmethod
+    def save_summary(
+        filename: str,
+        summary: str,
+        key_points: List[str],
+        status: str = "completed",
+        error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Insert or update the summary for a document."""
+        import json
+        doc_id = filename
+        now = _now_iso()
+        points_json = json.dumps(key_points)
+
+        with _get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO document_summaries (document_id, filename, status, summary, key_points, error, generated_at, version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                ON CONFLICT(filename) DO UPDATE SET
+                    status = excluded.status,
+                    summary = excluded.summary,
+                    key_points = excluded.key_points,
+                    error = excluded.error,
+                    generated_at = excluded.generated_at,
+                    version = version + 1
+                """,
+                (doc_id, filename, status, summary, points_json, error, now),
+            )
+            conn.commit()
+
+        return MetadataStore.get_summary(filename)  # type: ignore
+
+    @staticmethod
+    def get_summary(filename: str) -> Optional[Dict[str, Any]]:
+        """Retrieve stored summary for a document."""
+        import json
+        with _get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM document_summaries WHERE filename = ? OR document_id = ?",
+                (filename, filename),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            try:
+                res["key_points"] = json.loads(res.get("key_points") or "[]")
+            except Exception:
+                res["key_points"] = []
+            return res
+
+    @staticmethod
+    def update_summary_status(
+        filename: str,
+        status: str,
+        error: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Update summary status (e.g. 'generating', 'failed', 'pending')."""
+        existing = MetadataStore.get_summary(filename)
+        doc_id = filename
+        now = _now_iso()
+
+        with _get_connection() as conn:
+            if existing:
+                conn.execute(
+                    "UPDATE document_summaries SET status = ?, error = ?, generated_at = ? WHERE filename = ?",
+                    (status, error, now if status in ("completed", "failed") else existing.get("generated_at"), filename),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO document_summaries (document_id, filename, status, summary, key_points, error, generated_at, version)
+                    VALUES (?, ?, ?, '', '[]', ?, ?, 1)
+                    """,
+                    (doc_id, filename, status, error, now),
+                )
+            conn.commit()
+
+        return MetadataStore.get_summary(filename)
+
+    @staticmethod
+    def delete_summary(filename: str) -> bool:
+        """Delete stored summary for a document."""
+        with _get_connection() as conn:
+            conn.execute("DELETE FROM document_summaries WHERE filename = ? OR document_id = ?", (filename, filename))
+            conn.commit()
+        return True
+

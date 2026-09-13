@@ -62,23 +62,10 @@ class LLM:
         *,
         stream: bool,
         history: list[dict] | None = None,
+        format: str | None = None,
     ) -> dict:
-        """
-        Build the /api/chat request body.
-
-        Message order:
-          1. system  -- grounding instructions (always first)
-          2. history -- bounded prior turns in chronological order
-             [{role: "user"|"assistant", content: "..."}]
-             Memory does NOT affect document retrieval; it only gives the
-             LLM awareness of the conversation so it can resolve references
-             like "What are its weaknesses?" after "Summarize the methodology."
-          3. user    -- the current question with retrieved context
-        """
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
-        # Inject bounded history between system instructions and the current
-        # question. Cap defensively here (schema already capped upstream).
         for turn in (history or [])[-6:]:
             role = turn.get("role", "user")
             content = turn.get("content", "")
@@ -87,45 +74,32 @@ class LLM:
 
         messages.append({"role": "user", "content": user_prompt})
 
-        return {
+        payload = {
             "model": self.model,
             "messages": messages,
             "stream": stream,
             "options": self._OPTIONS,
             "keep_alive": self._KEEP_ALIVE,
         }
+        if format:
+            payload["format"] = format
+        return payload
 
     def generate(
         self,
         system_prompt: str,
         user_prompt: str,
         history: list[dict] | None = None,
+        format: str | None = None,
     ) -> str:
-        """
-        Send one chat request to Ollama and return the reply text.
-
-        Uses Ollama's /api/chat endpoint with:
-          - a "system" message carrying the grounding instructions,
-          - optional prior conversation history for context continuity,
-          - a "user" message carrying the retrieved context + question.
-        Keeping instructions in the system role makes the model treat
-        them as rules rather than as part of the question.
-
-        stream=False returns the complete answer in one JSON response.
-        temperature is set low because grounded question-answering
-        should be factual and repeatable, not creative.
-        raise_for_status() turns HTTP errors (e.g. Ollama not running,
-        model not installed) into clear Python exceptions.
-        """
         response = requests.post(
             f"{self.base_url}/api/chat",
-            json=self._payload(system_prompt, user_prompt, stream=False, history=history),
-            # Local generation on CPU can be slow for long contexts,
-            # so allow generous time before giving up.
+            json=self._payload(system_prompt, user_prompt, stream=False, history=history, format=format),
             timeout=300,
         )
         response.raise_for_status()
         return response.json()["message"]["content"]
+
 
     def generate_stream(
         self,

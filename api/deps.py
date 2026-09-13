@@ -18,6 +18,7 @@ from fastapi import Depends
 
 from api.services.document_service import DocumentService
 from api.services.rag_service import RagService
+from summary_service import SummaryService
 
 
 @lru_cache(maxsize=1)
@@ -32,5 +33,13 @@ def get_document_service() -> DocumentService:
     return DocumentService()
 
 
+@lru_cache(maxsize=1)
+def get_summary_service() -> SummaryService:
+    """Shared SummaryService for document summarization."""
+    return SummaryService()
+
+
 RagServiceDep = Annotated[RagService, Depends(get_rag_service)]
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
+SummaryServiceDep = Annotated[SummaryService, Depends(get_summary_service)]
+
