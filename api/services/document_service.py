@@ -108,6 +108,12 @@ class DocumentService:
                     file_size=size_bytes,
                     chunk_count=chunks,
                 )
+                try:
+                    from summary_service import SummaryService
+                    SummaryService().summarize_document(name)
+                except Exception:
+                    logger.exception("Automatic summary generation failed for '%s' (non-blocking)", name)
+
                 results.append(
                     {"filename": name, "status": "indexed",
                      "chunks_indexed": chunks}
@@ -135,11 +141,16 @@ class DocumentService:
     def delete_document(self, filename: str) -> int:
         """
         Remove one document completely: its vectors from Chroma, metadata from SQLite,
-        and file from data/.
+        summary from SQLite, and file from data/.
         """
         safe_name = os.path.basename(filename)
         count = delete_document(safe_name)
         MetadataStore.delete_document_meta(safe_name)
+        try:
+            from summary_service import SummaryService
+            SummaryService().delete_summary(safe_name)
+        except Exception:
+            logger.exception("Failed to delete summary for '%s'", safe_name)
 
         path = os.path.join(DATA_DIR, safe_name)
         if os.path.isfile(path):
