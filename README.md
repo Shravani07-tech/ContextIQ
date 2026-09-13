@@ -10,8 +10,13 @@ your machine (no cloud APIs, no data leaves your computer).
 
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20Ollama-blue)
 
-## Features (ContextIQ 2.0 — Phase B: Knowledge Organization)
+## Features (ContextIQ 2.0 — Phase C1: Automatic Document Summarization)
 
+- **Automatic Document Summarization**: Automatically generates grounded 2-5 sentence overviews and key points for indexed documents using local Ollama LLM infrastructure.
+- **Bounded Large Document Summarization**: Safely handles large documents via bounded sampling and capped synthesis calls without infinite loops or token budget overflow.
+- **Non-Blocking Failure Isolation**: Ingestion and indexing never fail due to LLM errors; summary status is tracked (`completed`, `generating`, `pending`, `failed`) and supports manual retry.
+- **Persistent Local Summaries**: Summaries persist locally in SQLite metadata store across application restarts and remain intact when moving documents between collections.
+- **Document Library UI Integration**: Workspace dialog features interactive summary cards, status indicators (`✓ Summary ready`, `⏳ Generating...`, `⚠ Summary unavailable`), bulleted key points, and one-click retry.
 - **Persistent Collections & Workspaces**: Organize documents into custom, persistent logical collections (stored locally in SQLite) with total backwards compatibility.
 - **Document Tags & Metadata Management**: Apply normalized, searchable tags (`#research`, `#finance`) and inspect detailed document metadata (file size, file type, page/slide/sheet count, chunk count, extraction method).
 - **Collection-Aware Retrieval**: Scope vector and BM25 candidate retrieval to active collections or tags before reranking and LLM context construction, enforcing strict cross-collection data isolation.
@@ -23,6 +28,7 @@ your machine (no cloud APIs, no data leaves your computer).
 - **Hybrid Retrieval**: Combines semantic vector retrieval (ChromaDB) with lexical keyword matching (BM25 via `rank-bm25`) fused via Reciprocal Rank Fusion (RRF, $k=60$) for higher retrieval accuracy.
 - **Cross-Encoder Reranking**: Candidate passages are reranked using a lightweight local `cross-encoder/ms-marco-MiniLM-L-2-v2` neural model.
 - **Multi-Document Research Mode**: Synthesizes structured markdown summaries across indexed documents using a single LLM call.
+
 
 ## How it works
 
