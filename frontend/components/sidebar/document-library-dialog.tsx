@@ -2,12 +2,17 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  AlertCircle,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   FileText,
   Library,
   Loader2,
   Plus,
+  RefreshCw,
   Search,
+  Sparkles,
   Tag,
   Trash2,
   X,
@@ -30,14 +35,112 @@ import { useDeleteDocument } from "@/hooks/useDeleteDocument";
 import {
   useAddTag,
   useDetailedDocuments,
+  useDocumentSummary,
   useMoveDocument,
   useRemoveTag,
+  useRetrySummary,
   useTags,
 } from "@/hooks/useDocuments";
 import { useCollections } from "@/hooks/useCollections";
 import { confirmToast } from "@/lib/confirm-toast";
 import { formatBytes } from "@/lib/utils";
 import type { Collection, DocumentDetail } from "@/lib/types";
+
+
+function DocumentSummaryCard({ filename }: { filename: string }) {
+  const summaryQuery = useDocumentSummary(filename);
+  const retryMutation = useRetrySummary();
+  const [expanded, setExpanded] = useState(true);
+
+  const summaryData = summaryQuery.data;
+  const isLoading = summaryQuery.isPending;
+  const isRetrying = retryMutation.isPending;
+
+  return (
+    <div className="mt-2 rounded border border-border/60 bg-muted/30 p-2 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-primary transition-colors text-left"
+        >
+          {expanded ? (
+            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <Sparkles className="size-3.5 text-amber-500 shrink-0" />
+          <span>Summary & Key Points</span>
+        </button>
+
+        <div className="flex items-center gap-2">
+          {summaryData?.status === "completed" && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="size-3" />
+              Summary ready
+            </span>
+          )}
+          {(summaryData?.status === "generating" || summaryData?.status === "pending" || isLoading) && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+              <Loader2 className="size-3 animate-spin" />
+              Generating...
+            </span>
+          )}
+          {summaryData?.status === "failed" && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-destructive">
+              <AlertCircle className="size-3" />
+              Summary unavailable
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => retryMutation.mutate(filename)}
+            disabled={isRetrying || summaryData?.status === "generating"}
+            title="Retry summary generation"
+            className="flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
+          >
+            <RefreshCw className={`size-3 ${isRetrying ? "animate-spin" : ""}`} />
+            <span>{summaryData?.status === "failed" ? "Retry" : "Regenerate"}</span>
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-2 space-y-2 text-muted-foreground pt-2 border-t border-border/40">
+          {summaryData?.summary ? (
+            <p className="text-[12px] leading-relaxed text-foreground/90 font-normal">
+              {summaryData.summary}
+            </p>
+          ) : (
+            <p className="italic text-[11px]">
+              {summaryData?.status === "failed"
+                ? summaryData.error || "Summary generation failed."
+                : "Generating summary..."}
+            </p>
+          )}
+
+          {summaryData?.key_points && summaryData.key_points.length > 0 && (
+            <div>
+              <p className="font-semibold text-[10px] uppercase tracking-wider text-foreground/70 mb-1">
+                Key Points
+              </p>
+              <ul className="space-y-1 pl-1">
+                {summaryData.key_points.map((pt, idx) => (
+                  <li key={idx} className="flex items-start gap-1.5 text-[11px] text-foreground/80">
+                    <span className="text-primary font-bold">•</span>
+                    <span>{pt}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 
 export function DocumentLibraryDialog() {
@@ -361,7 +464,11 @@ export function DocumentLibraryDialog() {
                           </button>
                         )}
                       </div>
+
+                      {/* Automatic Summary Section */}
+                      <DocumentSummaryCard filename={doc.filename} />
                     </motion.li>
+
                   );
                 })}
               </AnimatePresence>

@@ -13,6 +13,7 @@ import type {
   DeleteDocumentResponse,
   DocumentDetail,
   DocumentListResponse,
+  DocumentSummary,
   DocumentsResponse,
   HealthResponse,
   HistoryMessage,
@@ -23,6 +24,7 @@ import type {
   TagListResponse,
   UploadResponse,
 } from "@/lib/types";
+
 
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -120,6 +122,17 @@ export const api = {
   /** GET /documents/{filename} — metadata detail for one document. */
   documentDetail: (filename: string) =>
     request<DocumentDetail>(`/documents/${encodeURIComponent(filename)}`),
+
+  /** GET /documents/{filename}/summary — fetch document summary. */
+  documentSummary: (filename: string) =>
+    request<DocumentSummary>(`/documents/${encodeURIComponent(filename)}/summary`),
+
+  /** POST /documents/{filename}/summary/retry — retry or force summary generation. */
+  retryDocumentSummary: (filename: string) =>
+    request<DocumentSummary>(`/documents/${encodeURIComponent(filename)}/summary/retry`, {
+      method: "POST",
+    }),
+
 
   /** PATCH /documents/{filename} — assign or move document to a collection. */
   moveDocument: (filename: string, collectionId: string | null) =>

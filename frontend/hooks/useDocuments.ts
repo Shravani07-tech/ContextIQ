@@ -70,3 +70,27 @@ export function useTags() {
     },
   });
 }
+
+export function useDocumentSummary(filename: string | null) {
+  return useQuery({
+    queryKey: ["document-summary", filename],
+    queryFn: () => (filename ? api.documentSummary(filename) : null),
+    enabled: Boolean(filename),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "generating" || status === "pending" ? 2000 : false;
+    },
+  });
+}
+
+export function useRetrySummary() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (filename: string) => api.retryDocumentSummary(filename),
+    onSuccess: (data, filename) => {
+      qc.invalidateQueries({ queryKey: ["document-summary", filename] });
+      qc.invalidateQueries({ queryKey: ["detailed-documents"] });
+    },
+  });
+}
+

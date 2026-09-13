@@ -199,3 +199,15 @@ export interface TagActionResponse {
   tags: string[];
 }
 
+export interface DocumentSummary {
+  document_id: string;
+  filename: string;
+  status: "pending" | "generating" | "completed" | "failed";
+  summary: string;
+  key_points: string[];
+  error?: string | null;
+  generated_at?: string | null;
+  version?: number;
+}
+
+
