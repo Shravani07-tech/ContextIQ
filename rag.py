@@ -101,30 +101,23 @@ def answer_question(
     llm: LLM | None = None,
     history: list[dict] | None = None,
     document_filter: str | None = None,
+    collection_id: str | None = None,
+    tag: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict:
     """
     Full RAG pipeline for one question: retrieve, then generate.
-
-    Args:
-        question:        The user's natural-language question.
-        retriever / llm: Existing instances to reuse. Created fresh if not supplied.
-        history:         Prior conversation turns [{role, content}, ...].
-                         Sent to the LLM as context; does NOT affect retrieval.
-                         Capped at 6 messages by the schema; enforced here too.
-        document_filter: When set, restricts retrieval to this document only.
-
-    Returns a dict with:
-        answer  -> the model's grounded reply (str)
-        sources -> list of {filename, chunk_id, similarity, page, slide, sheet, section, extraction_method}
-                   for the chunks the answer was based on
-
-    If retrieval finds nothing (empty database), the LLM is not
-    called at all -- we return the honest fallback reply directly.
     """
     retriever = retriever or Retriever()
     llm = llm or LLM()
 
-    chunks = retriever.retrieve(question, document_filter=document_filter)
+    chunks = retriever.retrieve(
+        question,
+        document_filter=document_filter,
+        collection_id=collection_id,
+        tag=tag,
+        tags=tags,
+    )
     if not chunks:
         return {
             "answer": "I don't know based on the provided documents.",
@@ -135,8 +128,6 @@ def answer_question(
     safe_history = (history or [])[-6:]
     answer = llm.generate(SYSTEM_PROMPT, prompt, history=safe_history)
 
-    # Return only source metadata (not full chunk text) -- enough for
-    # the caller to cite or display where the answer came from.
     sources = [
         {
             "filename": chunk["filename"],
@@ -160,30 +151,26 @@ def answer_question_stream(
     llm: LLM | None = None,
     history: list[dict] | None = None,
     document_filter: str | None = None,
+    collection_id: str | None = None,
+    tag: str | None = None,
+    tags: list[str] | None = None,
 ) -> Iterator[dict]:
     """
     Streaming counterpart to answer_question(): identical retrieval
     step and identical grounding policy, but yields the answer
     incrementally instead of returning it all at once.
-
-    Yields a sequence of event dicts:
-        {"type": "sources", "sources": [...]} -> exactly once, first
-        {"type": "token", "text": "..."}      -> zero or more times
-
-    The empty-database fallback is delivered as a single "token"
-    event carrying the exact same wording answer_question() returns,
-    and -- just like answer_question() -- the LLM is never called when
-    there is nothing to answer from.
-
-    Args:
-        history:         Prior conversation turns -- injected as prior messages
-                         in the Ollama /api/chat payload. Capped at 6.
-        document_filter: Restrict retrieval to one document filename.
     """
     retriever = retriever or Retriever()
     llm = llm or LLM()
 
-    chunks = retriever.retrieve(question, document_filter=document_filter)
+    chunks = retriever.retrieve(
+        question,
+        document_filter=document_filter,
+        collection_id=collection_id,
+        tag=tag,
+        tags=tags,
+    )
+
     sources = [
         {
             "filename": chunk["filename"],

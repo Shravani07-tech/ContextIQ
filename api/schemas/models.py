@@ -40,12 +40,29 @@ class ChatRequest(BaseModel):
 
     # When set, restricts vector retrieval to a single document's chunks.
     # None / absent means 'All Documents' (retrieve across everything).
+    # When set, restricts vector retrieval to a single document's chunks.
+    # None / absent means 'All Documents' (retrieve across everything).
     document_filter: str | None = Field(
         default=None,
         description=(
             "Restrict retrieval to this specific document filename. "
             "Omit or set null for All-Documents mode."
         ),
+    )
+
+    collection_id: str | None = Field(
+        default=None,
+        description="Restrict retrieval to documents within this collection ID",
+    )
+
+    tag: str | None = Field(
+        default=None,
+        description="Restrict retrieval to documents matching this tag",
+    )
+
+    tags: list[str] | None = Field(
+        default=None,
+        description="Restrict retrieval to documents matching ALL of these tags",
     )
 
     @field_validator("question")
@@ -134,12 +151,27 @@ class ChatResponse(BaseModel):
 
 
 class ResearchRequest(BaseModel):
-    """A research question to synthesize across ALL indexed documents."""
+    """A research question to synthesize across indexed documents."""
 
     question: str = Field(
         ...,
-        description="Research question synthesized across all documents",
+        description="Research question synthesized across documents",
         json_schema_extra={"example": "What are the key themes across all documents?"},
+    )
+
+    collection_id: str | None = Field(
+        default=None,
+        description="Restrict research retrieval to documents within this collection ID",
+    )
+
+    tag: str | None = Field(
+        default=None,
+        description="Restrict research retrieval to documents matching this tag",
+    )
+
+    tags: list[str] | None = Field(
+        default=None,
+        description="Restrict research retrieval to documents matching ALL of these tags",
     )
 
     @field_validator("question")

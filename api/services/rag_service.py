@@ -36,27 +36,19 @@ class RagService:
         question: str,
         history: list[dict] | None = None,
         document_filter: str | None = None,
+        collection_id: str | None = None,
+        tag: str | None = None,
+        tags: list[str] | None = None,
     ) -> dict:
-        """
-        Answer one question via the existing full RAG pipeline, then
-        enrich each cited source with a preview snippet of its chunk.
-
-        answer_question() deliberately returns source METADATA only;
-        the preview text is fetched here, at the API layer, by chunk
-        id -- so the core pipeline stays byte-identical while the API
-        can power expandable source previews in the UI.
-
-        Args:
-            history:         Bounded conversation history (max 6 turns).
-                             Sent to LLM; does NOT affect retrieval.
-            document_filter: When set, restricts retrieval to this filename.
-        """
         result = answer_question(
             question,
             self.retriever,
             self.llm,
             history=history,
             document_filter=document_filter,
+            collection_id=collection_id,
+            tag=tag,
+            tags=tags,
         )
         self._enrich_sources(result["sources"])
         return result
@@ -80,7 +72,6 @@ class RagService:
                 source["preview"] = text[:PREVIEW_CHARS] + (
                     "\u2026" if len(text) > PREVIEW_CHARS else ""
                 )
-            # Enrich page/section/document_id from stored metadata if not already set
             meta = metas.get(cid, {})
             if source.get("page") is None and meta.get("page") is not None:
                 source["page"] = meta["page"]
@@ -90,11 +81,6 @@ class RagService:
                 source["document_id"] = meta["document_id"]
 
     def enrich_sources(self, sources: list[dict]) -> list[dict]:
-        """Public variant of _enrich_sources: enriches sources and returns them.
-
-        Used by the research router which needs the return value.
-        In-place mutation still applies; the return allows method chaining.
-        """
         self._enrich_sources(sources)
         return sources
 
@@ -103,27 +89,24 @@ class RagService:
         question: str,
         history: list[dict] | None = None,
         document_filter: str | None = None,
+        collection_id: str | None = None,
+        tag: str | None = None,
+        tags: list[str] | None = None,
     ) -> Iterator[dict]:
-        """
-        Streaming counterpart to ask(): same preview enrichment for
-        sources, applied before the "sources" event is yielded rather
-        than after the fact -- streaming sends sources to the client
-        immediately, so enrichment can't happen retroactively.
-
-        Args:
-            history:         Bounded conversation history (max 6 turns).
-            document_filter: Restrict retrieval to one document filename.
-        """
         for event in answer_question_stream(
             question,
             self.retriever,
             self.llm,
             history=history,
             document_filter=document_filter,
+            collection_id=collection_id,
+            tag=tag,
+            tags=tags,
         ):
             if event["type"] == "sources":
                 self._enrich_sources(event["sources"])
             yield event
+
 
     def refresh_collection(self) -> None:
         """

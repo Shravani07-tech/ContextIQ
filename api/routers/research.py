@@ -27,12 +27,7 @@ router = APIRouter()
 @router.post("/research", response_model=ResearchResponse)
 async def research(body: ResearchRequest) -> ResearchResponse:
     """
-    Synthesize an answer across all indexed documents.
-
-    Uses the full Research Mode pipeline: hybrid retrieval across ALL
-    documents → single structured LLM synthesis call.
-
-    Returns a structured ResearchResponse with the synthesis and sources.
+    Synthesize an answer across scoped or all indexed documents.
     """
     from research import research_question
 
@@ -44,6 +39,9 @@ async def research(body: ResearchRequest) -> ResearchResponse:
             body.question,
             retriever=rag_service.retriever,
             llm=rag_service.llm,
+            collection_id=body.collection_id,
+            tag=body.tag,
+            tags=body.tags,
         ),
     )
 
@@ -59,12 +57,6 @@ async def research(body: ResearchRequest) -> ResearchResponse:
 async def research_stream(body: ResearchRequest) -> StreamingResponse:
     """
     Streaming SSE variant of the Research Mode endpoint.
-
-    Events emitted (same format as /chat/stream):
-        {"type": "sources",  "sources": [...], "doc_count": N}  — once, first
-        {"type": "token",    "text": "..."}                      — zero or more
-        {"type": "done"}                                          — once, last
-        {"type": "error",    "detail": "..."}                    — on failure
     """
     from research import research_question_stream
 
@@ -76,12 +68,16 @@ async def research_stream(body: ResearchRequest) -> StreamingResponse:
                 body.question,
                 retriever=rag_service.retriever,
                 llm=rag_service.llm,
+                collection_id=body.collection_id,
+                tag=body.tag,
+                tags=body.tags,
             ):
                 if event.get("type") == "sources":
                     enriched = rag_service.enrich_sources(event.get("sources", []))
                     event = {**event, "sources": enriched}
                 yield f"data: {json.dumps(event)}\n\n"
             yield f'data: {json.dumps({"type": "done"})}\n\n'
+
         except Exception:
             logger.exception("Research stream error")
             yield f'data: {json.dumps({"type": "error", "detail": "Research synthesis failed."})}\n\n'

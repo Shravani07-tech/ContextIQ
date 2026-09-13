@@ -106,30 +106,25 @@ def research_question(
     retriever: HybridRetriever | None = None,
     llm: LLM | None = None,
     top_k: int | None = None,
+    collection_id: str | None = None,
+    tag: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict:
     """
-    Full research pipeline: hybrid retrieval across ALL docs → synthesis.
-
-    Args:
-        question:  The research question to synthesize.
-        retriever: Existing HybridRetriever to reuse (created fresh if None).
-        llm:       Existing LLM client to reuse (created fresh if None).
-        top_k:     How many chunks to retrieve. Defaults to TOP_K * 3
-                   (more evidence for cross-document synthesis).
-
-    Returns:
-        {
-          "answer":  str,       # Structured synthesis
-          "sources": list[dict] # Source metadata (filename, chunk_id, page, etc.)
-          "doc_count": int      # How many distinct documents contributed evidence
-        }
+    Full research pipeline: hybrid retrieval across scoped/all docs → synthesis.
     """
     retriever = retriever or HybridRetriever()
     llm = llm or LLM()
     effective_top_k = top_k or (TOP_K * 3)
 
-    # Retrieve from ALL documents (no filter) with extra depth.
-    chunks = retriever.retrieve(question, top_k=effective_top_k, document_filter=None)
+    chunks = retriever.retrieve(
+        question,
+        top_k=effective_top_k,
+        document_filter=None,
+        collection_id=collection_id,
+        tag=tag,
+        tags=tags,
+    )
 
     if not chunks:
         return {
@@ -138,7 +133,6 @@ def research_question(
             "doc_count": 0,
         }
 
-    # Verify we actually have multiple documents represented.
     doc_names = list({c["filename"] for c in chunks})
     doc_count = len(doc_names)
 
@@ -168,19 +162,26 @@ def research_question_stream(
     retriever: HybridRetriever | None = None,
     llm: LLM | None = None,
     top_k: int | None = None,
+    collection_id: str | None = None,
+    tag: str | None = None,
+    tags: list[str] | None = None,
 ) -> Iterator[dict]:
     """
     Streaming counterpart to research_question().
-
-    Yields the same event format as answer_question_stream():
-        {"type": "sources", "sources": [...], "doc_count": int}  — once, first
-        {"type": "token",   "text": "..."}                        — zero or more
     """
     retriever = retriever or HybridRetriever()
     llm = llm or LLM()
     effective_top_k = top_k or (TOP_K * 3)
 
-    chunks = retriever.retrieve(question, top_k=effective_top_k, document_filter=None)
+    chunks = retriever.retrieve(
+        question,
+        top_k=effective_top_k,
+        document_filter=None,
+        collection_id=collection_id,
+        tag=tag,
+        tags=tags,
+    )
+
     sources = [
         {
             "filename": chunk["filename"],

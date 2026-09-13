@@ -52,26 +52,21 @@ router = APIRouter(tags=["chat"])
 def chat(body: ChatRequest, rag: RagServiceDep) -> ChatResponse:
     """
     Answer a question using only the indexed documents.
-
-    Empty-database behavior comes from the pipeline itself: it returns
-    the honest "I don't know" fallback without calling the LLM at all.
     """
     history = [m.model_dump() for m in body.history] if body.history else None
     return ChatResponse(**rag.ask(
         body.question,
         history=history,
         document_filter=body.document_filter,
+        collection_id=body.collection_id,
+        tag=body.tag,
+        tags=body.tags,
     ))
 
 
 def _stream_events(body: ChatRequest, rag: RagService) -> Iterator[str]:
     """
     Format rag.ask_stream()'s event dicts as Server-Sent Events.
-
-    Each event is one `data: <json>\\n\\n` line -- {"type": "sources", ...}
-    once, then {"type": "token", "text": ...} as the answer generates,
-    then {"type": "done"} once, or {"type": "error", "detail": ...} in
-    place of "done" if something went wrong mid-stream.
     """
     history = [m.model_dump() for m in body.history] if body.history else None
     try:
@@ -79,8 +74,12 @@ def _stream_events(body: ChatRequest, rag: RagService) -> Iterator[str]:
             body.question,
             history=history,
             document_filter=body.document_filter,
+            collection_id=body.collection_id,
+            tag=body.tag,
+            tags=body.tags,
         ):
             yield f"data: {json.dumps(event)}\n\n"
+
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
     except requests.RequestException:
         logger.exception("Ollama request failed during streaming")
