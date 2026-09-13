@@ -115,6 +115,160 @@ class PDFParser(BaseParser):
         )
 
 
+class DOCXParser(BaseParser):
+    """Parser for Microsoft Word documents (.docx)."""
+
+    def can_parse(self, filename: str) -> bool:
+        return filename.lower().endswith(".docx")
+
+    def parse(self, file_path: str) -> NormalizedDocument:
+        import docx
+
+        filename = os.path.basename(file_path)
+        doc = docx.Document(file_path)
+
+        sections: List[Tuple[str, str]] = []
+        current_heading = "Document Body"
+        current_text_lines: List[str] = []
+
+        for p in doc.paragraphs:
+            text = p.text.strip()
+            if not text:
+                continue
+            if p.style and p.style.name and p.style.name.startswith("Heading"):
+                if current_text_lines:
+                    sections.append((current_heading, "\n".join(current_text_lines)))
+                    current_text_lines = []
+                current_heading = text
+            else:
+                current_text_lines.append(text)
+
+        for table in doc.tables:
+            table_lines: List[str] = []
+            for row in table.rows:
+                row_cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if row_cells:
+                    table_lines.append(" | ".join(row_cells))
+            if table_lines:
+                current_text_lines.append("\n".join(table_lines))
+
+        if current_text_lines:
+            sections.append((current_heading, "\n".join(current_text_lines)))
+
+        full_text = "\n\n".join(f"=== {h} ===\n{t}" for h, t in sections) if sections else ""
+
+        return NormalizedDocument(
+            filename=filename,
+            text=full_text,
+            file_type="docx",
+            document_id=filename,
+            source_path=file_path,
+            sections=sections if sections else None,
+            extraction_method="text",
+        )
+
+
+class PPTXParser(BaseParser):
+    """Parser for Microsoft PowerPoint documents (.pptx)."""
+
+    def can_parse(self, filename: str) -> bool:
+        return filename.lower().endswith(".pptx")
+
+    def parse(self, file_path: str) -> NormalizedDocument:
+        from pptx import Presentation
+
+        filename = os.path.basename(file_path)
+        prs = Presentation(file_path)
+        slides: List[Tuple[int, str]] = []
+
+        for slide_num, slide in enumerate(prs.slides, 1):
+            slide_lines: List[str] = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for paragraph in shape.text_frame.paragraphs:
+                        text = paragraph.text.strip()
+                        if text:
+                            slide_lines.append(text)
+                elif shape.has_table:
+                    for row in shape.table.rows:
+                        row_cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                        if row_cells:
+                            slide_lines.append(" | ".join(row_cells))
+
+            if slide_lines:
+                slides.append((slide_num, "\n".join(slide_lines)))
+
+        full_text = "\n\n".join(f"--- Slide {n} ---\n{txt}" for n, txt in slides)
+
+        return NormalizedDocument(
+            filename=filename,
+            text=full_text,
+            file_type="pptx",
+            document_id=filename,
+            source_path=file_path,
+            slides=slides if slides else None,
+            extraction_method="text",
+        )
+
+
+class XLSXParser(BaseParser):
+    """Parser for Microsoft Excel workbooks (.xlsx)."""
+
+    def can_parse(self, filename: str) -> bool:
+        return filename.lower().endswith(".xlsx")
+
+    def parse(self, file_path: str) -> NormalizedDocument:
+        import openpyxl
+
+        filename = os.path.basename(file_path)
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+        sheets: List[Tuple[str, str]] = []
+
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                continue
+
+            header_idx = None
+            headers = []
+            for idx, r in enumerate(rows):
+                non_empty = [str(cell).strip() for cell in r if cell is not None and str(cell).strip() != ""]
+                if non_empty:
+                    header_idx = idx
+                    headers = [str(cell).strip() if cell is not None else f"Col_{i+1}" for i, cell in enumerate(r)]
+                    break
+
+            if header_idx is None:
+                continue
+
+            sheet_lines: List[str] = []
+            for r in rows[header_idx + 1:]:
+                row_fields = []
+                for i, cell in enumerate(r):
+                    if cell is not None and str(cell).strip() != "":
+                        h_name = headers[i] if i < len(headers) and headers[i] else f"Col_{i+1}"
+                        row_fields.append(f"{h_name}: {str(cell).strip()}")
+                if row_fields:
+                    sheet_lines.append(" | ".join(row_fields))
+
+            if sheet_lines:
+                sheets.append((sheet_name, "\n".join(sheet_lines)))
+
+        wb.close()
+        full_text = "\n\n".join(f"=== Sheet: {sname} ===\n{stxt}" for sname, stxt in sheets)
+
+        return NormalizedDocument(
+            filename=filename,
+            text=full_text,
+            file_type="xlsx",
+            document_id=filename,
+            source_path=file_path,
+            sheets=sheets if sheets else None,
+            extraction_method="text",
+        )
+
+
 class ParserRegistry:
     """Registry managing available document parsers."""
 
@@ -122,6 +276,9 @@ class ParserRegistry:
         self._parsers: List[BaseParser] = [
             TextParser(),
             PDFParser(),
+            DOCXParser(),
+            PPTXParser(),
+            XLSXParser(),
         ]
 
     def register_parser(self, parser: BaseParser) -> None:
@@ -146,3 +303,4 @@ class ParserRegistry:
 
 # Global registry singleton instance
 default_registry = ParserRegistry()
+

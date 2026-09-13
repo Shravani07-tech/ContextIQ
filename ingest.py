@@ -23,6 +23,10 @@ from vector_store import save_chunks
 
 logger = logging.getLogger(__name__)
 
+# Alias for backward compatibility with tests importing _strip_references
+_strip_references = strip_references
+
+
 
 def load_txt_file(file_path: str) -> str:
     """Read a .txt file and return its full text content as a string."""
