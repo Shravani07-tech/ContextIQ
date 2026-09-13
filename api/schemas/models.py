@@ -294,6 +294,35 @@ class DocumentListResponse(BaseModel):
     documents: list[DocumentDetail]
 
 
+class TagAddRequest(BaseModel):
+    """Body for POST /documents/{filename}/tags."""
+
+    tag: str = Field(..., description="Tag name to add to the document")
+
+    @field_validator("tag")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not v:
+            raise ValueError("Tag must not be empty")
+        if len(v) > 50:
+            raise ValueError("Tag must not exceed 50 characters")
+        return v
+
+
+class TagListResponse(BaseModel):
+    """List of all system tags."""
+
+    tags: list[str]
+
+
+class TagActionResponse(BaseModel):
+    """Outcome of adding or removing a tag from a document."""
+
+    filename: str
+    tags: list[str]
+
+
 # --- system ------------------------------------------------------------------
 
 

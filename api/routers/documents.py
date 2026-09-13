@@ -4,24 +4,31 @@
 #   POST /upload    -> stage files into data/ (no processing yet)
 #   POST /index     -> run the ingestion pipeline over staged files
 #   GET  /documents -> list what the vector database currently holds
-#
-# Upload and index are deliberately SEPARATE endpoints, mirroring the
-# UI flow where uploading only stages files and nothing is processed
-# until the user explicitly indexes — and matching how a future
-# frontend will want to show distinct progress for each step.
+#   PATCH /documents/{filename} -> update collection assignment
+#   POST /documents/{filename}/tags -> add tag to document
+#   DELETE /documents/{filename}/tags/{tag} -> remove tag from document
+#   GET /tags       -> list all system tags
+#   DELETE /documents/{filename} -> delete one document
 
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, HTTPException, UploadFile
 
 from api.deps import DocumentServiceDep
 from api.schemas import (
     DeleteDocumentResponse,
+    DocumentDetail,
+    DocumentListResponse,
+    DocumentMoveRequest,
     DocumentsResponse,
     FileResult,
     IndexRequest,
     IndexResponse,
+    TagActionResponse,
+    TagAddRequest,
+    TagListResponse,
     UploadResponse,
 )
 from config import MAX_UPLOAD_MB
+from metadata_store import MetadataStore
 from vector_store import get_stored_filenames, get_vector_count
 
 router = APIRouter(tags=["documents"])
@@ -34,19 +41,14 @@ MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
     response_model=UploadResponse,
     summary="Stage PDF/TXT files into the document folder",
 )
-def upload(files: list[UploadFile], docs: DocumentServiceDep) -> UploadResponse:
+def upload(
+    files: list[UploadFile],
+    docs: DocumentServiceDep,
+    collection_id: str | None = None,
+) -> UploadResponse:
     """
-    Save uploaded PDF/TXT files into the data/ folder.
-
-    Outcomes are reported per file (unsupported types become an error
-    entry rather than failing the whole request), so a mixed batch
-    behaves predictably.
-
-    Size enforcement happens HERE, server-side: the client's own
-    25 MB check is fast feedback only. Each file is read with a hard
-    cap (limit + 1 byte), so an oversized — or maliciously unbounded —
-    stream can never exhaust memory or disk: it is rejected the
-    moment it crosses the limit, and nothing is written.
+    Save uploaded files into the data/ folder.
+    Optionally assigns uploaded files directly to a target collection_id.
     """
     results: list[FileResult] = []
     for f in files:
@@ -69,7 +71,9 @@ def upload(files: list[UploadFile], docs: DocumentServiceDep) -> UploadResponse:
             continue
 
         try:
-            safe_name = docs.save_upload(f.filename or "", content)
+            safe_name = docs.save_upload(
+                f.filename or "", content, collection_id=collection_id
+            )
             results.append(FileResult(filename=safe_name, status="saved"))
         except ValueError as e:
             results.append(
@@ -88,10 +92,6 @@ def index(
 ) -> IndexResponse:
     """
     Index staged files through the existing pipeline.
-
-    With no body (or null filenames) every supported file in data/ is
-    (re)indexed — the API equivalent of `python ingest.py`. With a
-    filenames list, only those files are processed.
     """
     filenames = body.filenames if body is not None else None
     results = docs.index_files(filenames)
@@ -103,12 +103,136 @@ def index(
 
 @router.get(
     "/documents",
-    response_model=DocumentsResponse,
+    response_model=DocumentsResponse | DocumentListResponse,
     summary="List indexed documents",
 )
-def documents() -> DocumentsResponse:
-    """Distinct source filenames currently in the vector database."""
+def documents(
+    collection_id: str | None = None,
+    tag: str | None = None,
+    detail: bool = False,
+) -> DocumentsResponse | DocumentListResponse:
+    """
+    List documents currently indexed, optionally filtered by collection_id or tag.
+    If detail=True, returns rich metadata (DocumentDetail list).
+    If detail=False (default), returns simple list of filenames for backward compatibility.
+    """
+    if collection_id or tag or detail:
+        doc_metas = MetadataStore.list_documents(
+            collection_id=collection_id, tag=tag
+        )
+        if detail:
+            return DocumentListResponse(
+                documents=[DocumentDetail(**d) for d in doc_metas]
+            )
+        else:
+            return DocumentsResponse(documents=[d["filename"] for d in doc_metas])
+
     return DocumentsResponse(documents=get_stored_filenames())
+
+
+@router.get(
+    "/documents/{filename}",
+    response_model=DocumentDetail,
+    summary="Get document details by filename",
+)
+def get_document_details(filename: str) -> DocumentDetail:
+    """Get metadata, collection info, and tags for a specific document."""
+    doc = MetadataStore.get_document(filename)
+    if not doc:
+        if filename in get_stored_filenames():
+            ext = filename.split(".")[-1] if "." in filename else "txt"
+            doc = MetadataStore.upsert_document(filename=filename, file_type=ext)
+        else:
+            raise HTTPException(
+                status_code=404, detail=f"Document '{filename}' not found"
+            )
+    return DocumentDetail(**doc)
+
+
+@router.patch(
+    "/documents/{filename}",
+    response_model=DocumentDetail,
+    summary="Assign or move document to a collection",
+)
+def update_document(
+    filename: str, body: DocumentMoveRequest
+) -> DocumentDetail:
+    """Assign document to a collection or move it to Uncategorized (null)."""
+    doc = MetadataStore.get_document(filename)
+    if not doc:
+        if filename in get_stored_filenames():
+            ext = filename.split(".")[-1] if "." in filename else "txt"
+            doc = MetadataStore.upsert_document(filename=filename, file_type=ext)
+        else:
+            raise HTTPException(
+                status_code=404, detail=f"Document '{filename}' not found"
+            )
+
+    try:
+        updated = MetadataStore.set_document_collection(
+            filename=filename, collection_id=body.collection_id
+        )
+        if not updated:
+            raise HTTPException(
+                status_code=404, detail=f"Document '{filename}' not found"
+            )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    refreshed = MetadataStore.get_document(filename)
+    return DocumentDetail(**refreshed)  # type: ignore
+
+
+@router.post(
+    "/documents/{filename}/tags",
+    response_model=TagActionResponse,
+    summary="Add a tag to a document",
+)
+def add_tag(filename: str, body: TagAddRequest) -> TagActionResponse:
+    """Add a normalized tag to a document."""
+    doc = MetadataStore.get_document(filename)
+    if not doc:
+        if filename in get_stored_filenames():
+            ext = filename.split(".")[-1] if "." in filename else "txt"
+            doc = MetadataStore.upsert_document(filename=filename, file_type=ext)
+        else:
+            raise HTTPException(
+                status_code=404, detail=f"Document '{filename}' not found"
+            )
+
+    try:
+        updated_tags = MetadataStore.add_document_tag(filename, body.tag)
+        return TagActionResponse(filename=filename, tags=updated_tags)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete(
+    "/documents/{filename}/tags/{tag}",
+    response_model=TagActionResponse,
+    summary="Remove a tag from a document",
+)
+def remove_tag(filename: str, tag: str) -> TagActionResponse:
+    """Remove a tag from a document."""
+    doc = MetadataStore.get_document(filename)
+    if not doc:
+        raise HTTPException(
+            status_code=404, detail=f"Document '{filename}' not found"
+        )
+
+    updated_tags = MetadataStore.remove_document_tag(filename, tag)
+    return TagActionResponse(filename=filename, tags=updated_tags)
+
+
+@router.get(
+    "/tags",
+    response_model=TagListResponse,
+    summary="List all system tags",
+)
+def list_tags() -> TagListResponse:
+    """List all unique document tags in the workspace."""
+    tags = MetadataStore.list_all_tags()
+    return TagListResponse(tags=tags)
 
 
 @router.delete(
@@ -118,11 +242,8 @@ def documents() -> DocumentsResponse:
 )
 def delete_one(filename: str, docs: DocumentServiceDep) -> DeleteDocumentResponse:
     """
-    Remove a single document's vectors from the knowledge base and
-    its file from data/. Unlike DELETE /database, every other
-    document is untouched. Deleting an unknown filename is a no-op
-    (200, unchanged count) rather than a 404 — same idempotent policy
-    DELETE /database already uses.
+    Remove a single document's vectors from the knowledge base, metadata from SQLite,
+    and its file from data/.
     """
     count = docs.delete_document(filename)
     return DeleteDocumentResponse(
