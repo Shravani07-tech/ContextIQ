@@ -52,16 +52,16 @@ CRITICAL INSTRUCTIONS:
    - "reason": string (concise explanation, 1-2 sentences)
 
 Example JSON Output format:
-{
+{{
   "verifications": [
-    {
+    {{
       "claim": "Revenue increased by 35%.",
       "status": "UNSUPPORTED",
       "citation_ids": ["doc.pdf-1"],
       "reason": "The source states revenue grew by 25%, not 35%."
-    }
+    }}
   ]
-}"""
+}}"""
 
 
 class CitationVerificationService:
