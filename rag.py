@@ -16,6 +16,7 @@
 
 from collections.abc import Iterator
 
+from citation_verification_service import CitationVerificationService
 from config import TOP_K
 from llm import LLM
 from retrieval import HybridRetriever
@@ -124,6 +125,7 @@ def answer_question(
             "answer": "I don't know based on the provided documents.",
             "sources": [],
             "suggested_questions": [],
+            "citation_verification": [],
         }
 
     prompt = build_prompt(question, chunks)
@@ -154,10 +156,20 @@ def answer_question(
     except Exception:
         suggested_questions = []
 
+    citation_verification = []
+    try:
+        verification_service = CitationVerificationService(llm=LLM())
+        citation_verification = verification_service.verify_citations(
+            answer, chunks
+        )
+    except Exception:
+        citation_verification = []
+
     return {
         "answer": answer,
         "sources": sources,
         "suggested_questions": suggested_questions,
+        "citation_verification": citation_verification,
     }
 
 
@@ -206,6 +218,7 @@ def answer_question_stream(
             "text": "I don't know based on the provided documents.",
         }
         yield {"type": "suggested_questions", "questions": []}
+        yield {"type": "citation_verification", "verifications": []}
         return
 
     prompt = build_prompt(question, chunks)
@@ -235,6 +248,16 @@ def answer_question_stream(
         )
         if suggestions:
             yield {"type": "suggested_questions", "questions": suggestions}
+    except Exception:
+        pass
+
+    try:
+        verification_service = CitationVerificationService(llm=LLM())
+        verifications = verification_service.verify_citations(
+            full_answer, chunks
+        )
+        if verifications:
+            yield {"type": "citation_verification", "verifications": verifications}
     except Exception:
         pass
 
