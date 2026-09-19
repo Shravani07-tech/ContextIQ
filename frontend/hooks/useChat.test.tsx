@@ -284,3 +284,29 @@ describe("useChat — session persistence", () => {
     expect(result.current.messages).toHaveLength(0);
   });
 });
+
+describe("useChat — suggested questions", () => {
+  it("captures suggested questions from stream and attaches them to assistant message", async () => {
+    const calls = captureStream();
+    const { result } = renderChat();
+
+    act(() => result.current.sendMessage("What are the major risks?"));
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    act(() => calls[0].callbacks.onToken("Major risks include financial loss."));
+    act(() =>
+      calls[0].callbacks.onSuggestedQuestions?.([
+        "What evidence supports this?",
+        "How can risks be mitigated?",
+      ]),
+    );
+    act(() => calls[0].callbacks.onDone());
+
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[1].suggestedQuestions).toEqual([
+      "What evidence supports this?",
+      "How can risks be mitigated?",
+    ]);
+  });
+});

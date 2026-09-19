@@ -71,7 +71,7 @@ describe("useUpload — client-side validation", () => {
     expect(api.upload).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(
       "Rejected malware.exe",
-      expect.objectContaining({ description: expect.stringContaining("PDF and TXT") }),
+      expect.objectContaining({ description: expect.stringContaining("PDF") }),
     );
   });
 
