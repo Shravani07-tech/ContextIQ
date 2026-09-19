@@ -148,10 +148,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     sessions,
     activeSessionId,
     activeSession,
-    createNewSession,
-    switchSession: switchSessionBase,
+    createSession,
+    switchSession: rawSwitch,
     renameSession,
-    deleteSession,
+    deleteSession: rawDelete,
     saveMessages,
   } = useSessions();
 
