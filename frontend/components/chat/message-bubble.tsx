@@ -19,6 +19,7 @@
 import { AlertCircle, RotateCcw } from "lucide-react";
 
 import { ContradictionCards } from "@/components/chat/contradiction-cards";
+import { ExportReportButton } from "@/components/chat/export-report-button";
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { SourceCards } from "@/components/chat/source-cards";
 import { SuggestedQuestions } from "@/components/chat/suggested-questions";
@@ -123,12 +124,13 @@ export function MessageBubble({
           </span>
         )}
         {!isUser && (
-          <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
             <CopyButton
               text={message.content}
               label="Copy answer"
               className="p-1"
             />
+            <ExportReportButton message={message} />
             {isLastAssistant && (
               <button
                 type="button"

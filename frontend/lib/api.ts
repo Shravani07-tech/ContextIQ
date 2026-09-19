@@ -467,4 +467,30 @@ export const api = {
       callbacks.onError("The connection was interrupted mid-answer.");
     }
   },
+
+  /** POST /research/export — download a Markdown, PDF, or Plain Text report. */
+  exportResearchReport: async (payload: {
+    format: "markdown" | "pdf" | "txt";
+    question: string;
+    answer: string;
+    sources: Source[];
+    doc_count?: number;
+    citation_verification?: VerificationItem[];
+    contradictions?: ContradictionItem[];
+    collection_name?: string | null;
+    document_filter?: string | null;
+  }): Promise<Blob> => {
+    const response = await fetch(`${API_URL}/research/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        errorDetail(await response.text(), response.status),
+      );
+    }
+    return response.blob();
+  },
 };
