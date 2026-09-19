@@ -32,6 +32,7 @@ from api.schemas.models import (
     TagAddRequest,
     TagListResponse,
     UploadResponse,
+    VerificationItem,
 )
 
 __all__ = [
@@ -63,5 +64,6 @@ __all__ = [
     "TagAddRequest",
     "TagListResponse",
     "UploadResponse",
+    "VerificationItem",
 ]
 

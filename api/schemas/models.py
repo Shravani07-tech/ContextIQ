@@ -122,6 +122,20 @@ class Source(BaseModel):
     )
 
 
+class VerificationItem(BaseModel):
+    """Result of verifying a single claim against cited evidence."""
+
+    claim: str = Field(description="The extracted factual claim")
+    status: str = Field(
+        description="Verification status: SUPPORTED, PARTIALLY_SUPPORTED, UNSUPPORTED, or UNVERIFIABLE"
+    )
+    citation_ids: list[str] = Field(
+        default_factory=list,
+        description="Source/chunk IDs associated with this claim",
+    )
+    reason: str = Field(description="Concise explanation for the verification status")
+
+
 class ChatResponse(BaseModel):
     """Grounded answer plus the sources it came from."""
 
@@ -132,6 +146,10 @@ class ChatResponse(BaseModel):
     suggested_questions: list[str] = Field(
         default_factory=list,
         description="Suggested follow-up questions grounded in the context",
+    )
+    citation_verification: list[VerificationItem] = Field(
+        default_factory=list,
+        description="Verification results evaluating whether claims are supported by sources",
     )
 
     model_config = {
@@ -148,7 +166,15 @@ class ChatResponse(BaseModel):
                 ],
                 "suggested_questions": [
                     "What evidence supports these tier distinctions?",
-                    "How are the tiers updated over time?"
+                    "How are the tiers updated over time?",
+                ],
+                "citation_verification": [
+                    {
+                        "claim": "Zephyra stores knowledge in three tiers.",
+                        "status": "SUPPORTED",
+                        "citation_ids": ["zephyra.txt-3"],
+                        "reason": "The passage explicitly outlines three distinct storage tiers.",
+                    }
                 ],
             }
         }
