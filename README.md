@@ -10,14 +10,17 @@ your machine (no cloud APIs, no data leaves your computer).
 
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20Ollama-blue)
 
-## Features (ContextIQ 2.0 — Phase C1: Automatic Document Summarization)
+## Features (ContextIQ 2.0 — Phase C4: Citation Verification)
 
-- **Automatic Document Summarization**: Automatically generates grounded 2-5 sentence overviews and key points for indexed documents using local Ollama LLM infrastructure.
-- **Bounded Large Document Summarization**: Safely handles large documents via bounded sampling and capped synthesis calls without infinite loops or token budget overflow.
-- **Non-Blocking Failure Isolation**: Ingestion and indexing never fail due to LLM errors; summary status is tracked (`completed`, `generating`, `pending`, `failed`) and supports manual retry.
-- **Persistent Local Summaries**: Summaries persist locally in SQLite metadata store across application restarts and remain intact when moving documents between collections.
-- **Document Library UI Integration**: Workspace dialog features interactive summary cards, status indicators (`✓ Summary ready`, `⏳ Generating...`, `⚠ Summary unavailable`), bulleted key points, and one-click retry.
-- **Persistent Collections & Workspaces**: Organize documents into custom, persistent logical collections (stored locally in SQLite) with total backwards compatibility.
+- **Citation Verification Engine**: Evaluates generated factual claims against cited document evidence, classifying each claim into `SUPPORTED`, `PARTIALLY_SUPPORTED`, `UNSUPPORTED`, or `UNVERIFIABLE`.
+- **Claim Extraction & Evidence Mapping**: Automatically extracts core factual claims from RAG answers and maps them to specific source chunks and document citations without altering the original answer text.
+- **Prompt Injection & Untrusted Context Isolation**: Treats retrieved document text strictly as untrusted evidence context, resisting embedded prompt injections or override instructions.
+- **Non-Blocking Failure Isolation**: Verification errors or LLM timeouts fall back gracefully to `UNVERIFIABLE` or empty status without delaying or breaking the primary Chat response.
+- **Interactive Verification UI**: Source cards display color-coded status badges (`✓ Supported`, `⚠ Partially supported`, `✕ Unsupported`, `? Unverifiable`) with expandable claim breakdowns and explanations.
+- **Suggested Follow-up Questions**: Generates 3-5 grounded, natural follow-up questions tailored to the active conversation and document scope.
+- **Automatic Document Summarization**: Automatically generates grounded overviews and key points for indexed documents using local Ollama LLM infrastructure.
+- **Persistent Local Summaries**: Summaries persist locally in SQLite metadata store across application restarts and document movement.
+- **Persistent Collections & Workspaces**: Organize documents into custom, persistent logical collections with strict scope isolation.
 - **Document Tags & Metadata Management**: Apply normalized, searchable tags (`#research`, `#finance`) and inspect detailed document metadata (file size, file type, page/slide/sheet count, chunk count, extraction method).
 - **Collection-Aware Retrieval**: Scope vector and BM25 candidate retrieval to active collections or tags before reranking and LLM context construction, enforcing strict cross-collection data isolation.
 - **Collection-Aware Chat & Research Mode**: Seamlessly switch between global document search and scoped collection chat/research without re-embedding or modifying ChromaDB vectors.
