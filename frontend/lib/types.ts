@@ -42,10 +42,18 @@ export interface Source {
   document_id?: string | null;
 }
 
+export interface VerificationItem {
+  claim: string;
+  status: "SUPPORTED" | "PARTIALLY_SUPPORTED" | "UNSUPPORTED" | "UNVERIFIABLE";
+  citation_ids: string[];
+  reason: string;
+}
+
 export interface ChatResponse {
   answer: string;
   sources: Source[];
   suggested_questions?: string[];
+  citation_verification?: VerificationItem[];
 }
 
 export interface HistoryMessage {
@@ -76,6 +84,8 @@ export interface ChatMessage {
   sources?: Source[];
   /** Suggested follow-up questions (assistant messages only). */
   suggestedQuestions?: string[];
+  /** Citation verification results evaluating support of claims. */
+  citationVerification?: VerificationItem[];
   /** Set on a failed system message so the UI can offer a "Retry"
       action that resends this exact question. */
   retryQuestion?: string;

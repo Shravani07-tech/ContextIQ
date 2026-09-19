@@ -37,6 +37,7 @@ import type {
   DocumentsResponse,
   HistoryMessage,
   Source,
+  VerificationItem,
 } from "@/lib/types";
 import { useActiveCollection } from "./useCollections";
 import { useSessions } from "./useSessions";
@@ -99,22 +100,37 @@ export interface ChatContextValue {
   setIsResearchMode: (v: boolean) => void;
 }
 
-const ChatContext = createContext<ChatContextValue | null>(null);
+// Create context with dummy defaults to avoid null checks in sub-components.
+export const ChatContext = createContext<ChatContextValue>({
+  messages: [],
+  lastSources: [],
+  isThinking: false,
+  isStreaming: false,
+  streamingContent: "",
+  streamingSources: [],
+  sendMessage: () => {},
+  addSystemMessage: () => {},
+  stopGeneration: () => {},
+  regenerate: () => {},
+  clearConversation: () => {},
+  sessions: [],
+  activeSessionId: null,
+  createNewChat: () => {},
+  switchSession: () => {},
+  renameSession: () => {},
+  deleteSession: () => {},
+  disambiguationPending: null,
+  resolveDisambiguation: () => {},
+  cancelDisambiguation: () => {},
+  documentFilter: null,
+  setDocumentFilter: () => {},
+  isResearchMode: false,
+  setIsResearchMode: () => {},
+});
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-
-  const {
-    sessions,
-    activeSession,
-    activeSessionId,
-    createSession,
-    switchSession: rawSwitch,
-    renameSession,
-    deleteSession: rawDelete,
-    saveMessages,
-  } = useSessions();
-
+  const [messages, setMessagesState] = useState<ChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
@@ -128,23 +144,47 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const abortRef = useRef<AbortController | null>(null);
 
-  // Clean up any in-flight stream on unmount.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  const {
+    sessions,
+    activeSessionId,
+    activeSession,
+    createNewSession,
+    switchSession: switchSessionBase,
+    renameSession,
+    deleteSession,
+    saveMessages,
+  } = useSessions();
 
-  const messages: ChatMessage[] = activeSession?.messages ?? [];
+  // Load session messages when active session changes
+  useEffect(() => {
+    if (activeSession) {
+      setMessagesState(activeSession.messages);
+    } else {
+      setMessagesState([]);
+    }
+  }, [activeSessionId, activeSession]);
 
   // Stable proxy to the session store — accepts functional updaters
   // for React 18 batching safety from async stream callbacks.
   const setMessages = useCallback(
     (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
-      saveMessages(updater);
+      setMessagesState((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        saveMessages(next);
+        return next;
+      });
     },
     [saveMessages],
   );
 
   // -------------------------------------------------------------------------
   const finalizeAnswer = useCallback(
-    (content: string, sources: Source[], suggestedQuestions?: string[]) => {
+    (
+      content: string,
+      sources: Source[],
+      suggestedQuestions?: string[],
+      citationVerification?: VerificationItem[],
+    ) => {
       setMessages((prev) => [
         ...prev,
         {
@@ -154,6 +194,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           timestamp: now(),
           sources,
           suggestedQuestions,
+          citationVerification,
         },
       ]);
       if (sources.length === 0) {
@@ -188,6 +229,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       let accumulated = "";
       let sources: Source[] = [];
       let suggestedQuestions: string[] = [];
+      let citationVerification: VerificationItem[] = [];
 
       const sessionMessages = activeSession?.messages ?? [];
       const history: HistoryMessage[] = sessionMessages
@@ -211,6 +253,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           onSuggestedQuestions: (sq) => {
             suggestedQuestions = sq;
           },
+          onCitationVerification: (cv) => {
+            citationVerification = cv;
+          },
           onDone: () => {
             abortRef.current = null;
             setIsThinking(false);
@@ -221,6 +266,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               accumulated || "I don't know based on the provided documents.",
               sources,
               suggestedQuestions,
+              citationVerification,
             );
           },
           onError: (detail) => {
@@ -229,7 +275,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setIsStreaming(false);
             setStreamingContent("");
             setStreamingSources([]);
-            if (accumulated) finalizeAnswer(accumulated, sources, suggestedQuestions);
+            if (accumulated) finalizeAnswer(accumulated, sources, suggestedQuestions, citationVerification);
             setMessages((prev) => [
               ...prev,
               {

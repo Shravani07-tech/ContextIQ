@@ -25,6 +25,7 @@ import type {
   TagActionResponse,
   TagListResponse,
   UploadResponse,
+  VerificationItem,
 } from "@/lib/types";
 
 
@@ -290,6 +291,7 @@ export const api = {
       onSources: (sources: Source[]) => void;
       onToken: (text: string) => void;
       onSuggestedQuestions?: (questions: string[]) => void;
+      onCitationVerification?: (verifications: VerificationItem[]) => void;
       onDone: () => void;
       onError: (detail: string) => void;
     },
@@ -352,6 +354,8 @@ export const api = {
           else if (event.type === "token") callbacks.onToken(event.text);
           else if (event.type === "suggested_questions") {
             callbacks.onSuggestedQuestions?.(event.questions);
+          } else if (event.type === "citation_verification") {
+            callbacks.onCitationVerification?.(event.verifications);
           } else if (event.type === "done") {
             callbacks.onDone();
             return;

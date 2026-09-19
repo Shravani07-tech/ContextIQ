@@ -96,7 +96,10 @@ export function MessageBubble({
         )}
         {/* Citations under the answer (assistant messages only). */}
         {!isUser && message.sources && message.sources.length > 0 && (
-          <SourceCards sources={message.sources} />
+          <SourceCards
+            sources={message.sources}
+            verifications={message.citationVerification}
+          />
         )}
         {/* Suggested follow-up questions (assistant messages only). */}
         {!isUser && message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
