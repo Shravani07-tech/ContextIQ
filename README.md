@@ -10,9 +10,10 @@ your machine (no cloud APIs, no data leaves your computer).
 
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20Ollama-blue)
 
-## Features (ContextIQ 2.0 — Phase C5: Contradiction Detection)
+## Features (ContextIQ 2.0 — Phase C6: Exportable Research Reports)
 
-- **Contradiction Detection Engine**: Analyzes retrieved evidence passages to detect conflicting claims or incompatible statements between source documents, classifying findings as `CONTRADICTION` or `POTENTIAL_CONTRADICTION`.
+- **Exportable Research Reports**: Export Research Mode results into professional, self-contained **Markdown (`.md`)**, **PDF (`.pdf`)**, or **Plain Text (`.txt`)** research reports with a single click.
+- **Deterministic & Attribution-Preserving Export**: Report generation is deterministic and preserves source attribution, active collection scope, document metadata, citation verification statuses (`SUPPORTED`, `UNVERIFIED`), and detected contradictions (`CONTRADICTION`, `POTENTIAL_CONTRADICTION`) without triggering extra LLM calls.
 - **False-Positive Safeguards**: Explicitly guards against false positives by differentiating real contradictions from differing reporting dates, currency units, geographic regions, or forecast vs. actual metrics.
 - **Strict Scope Isolation**: Contradiction analysis uses only evidence from the active query scope, preserving collection and document security boundaries.
 - **Interactive Contradiction UI**: Displays structured contradiction cards detailing conflicting claims side-by-side with source attribution (`Source A` vs `Source B`), severity levels (`HIGH`, `MEDIUM`, `LOW`), and concise explanatory reasons.
