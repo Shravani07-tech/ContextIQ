@@ -213,4 +213,21 @@ export interface DocumentSummary {
   version?: number;
 }
 
+export interface CompareRequest {
+  filenames: string[];
+  question?: string | null;
+  collection_id?: string | null;
+}
+
+export interface CompareResponse {
+  filenames: string[];
+  question: string;
+  summary: string;
+  similarities: string[];
+  differences: string[];
+  document_a_only: string[];
+  document_b_only: string[];
+  sources: Source[];
+}
+
 

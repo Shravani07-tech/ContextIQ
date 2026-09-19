@@ -10,6 +10,8 @@ import type {
   CollectionCreate,
   CollectionListResponse,
   CollectionUpdate,
+  CompareRequest,
+  CompareResponse,
   DeleteDocumentResponse,
   DocumentDetail,
   DocumentListResponse,
@@ -132,6 +134,18 @@ export const api = {
     request<DocumentSummary>(`/documents/${encodeURIComponent(filename)}/summary/retry`, {
       method: "POST",
     }),
+
+  /** POST /compare — compare selected documents. */
+  compare: (data: CompareRequest) =>
+    request<CompareResponse>(
+      "/compare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      120_000,
+    ),
 
 
   /** PATCH /documents/{filename} — assign or move document to a collection. */

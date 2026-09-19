@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { CompareDialog } from "@/components/sidebar/compare-dialog";
 import { EmptyPanelState } from "@/components/shared/empty-panel-state";
 import { InlineError } from "@/components/shared/inline-error";
 import {
@@ -256,6 +257,7 @@ export function DocumentLibraryDialog() {
 
           {/* Filters */}
           <div className="flex items-center gap-2 text-xs">
+            <CompareDialog />
             {/* File Type Filter */}
             <select
               value={selectedTypeFilter || ""}
