@@ -17,6 +17,7 @@
 from collections.abc import Iterator
 
 from citation_verification_service import CitationVerificationService
+from contradiction_detection_service import ContradictionDetectionService
 from config import TOP_K
 from llm import LLM
 from retrieval import HybridRetriever
@@ -165,11 +166,21 @@ def answer_question(
     except Exception:
         citation_verification = []
 
+    contradictions = []
+    try:
+        contradiction_service = ContradictionDetectionService(llm=LLM())
+        contradictions = contradiction_service.detect_contradictions(
+            answer, chunks
+        )
+    except Exception:
+        contradictions = []
+
     return {
         "answer": answer,
         "sources": sources,
         "suggested_questions": suggested_questions,
         "citation_verification": citation_verification,
+        "contradictions": contradictions,
     }
 
 
@@ -258,6 +269,16 @@ def answer_question_stream(
         )
         if verifications:
             yield {"type": "citation_verification", "verifications": verifications}
+    except Exception:
+        pass
+
+    try:
+        contradiction_service = ContradictionDetectionService(llm=LLM())
+        contradictions = contradiction_service.detect_contradictions(
+            full_answer, chunks
+        )
+        if contradictions:
+            yield {"type": "contradictions", "contradictions": contradictions}
     except Exception:
         pass
 
