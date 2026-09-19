@@ -144,7 +144,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   // -------------------------------------------------------------------------
   const finalizeAnswer = useCallback(
-    (content: string, sources: Source[]) => {
+    (content: string, sources: Source[], suggestedQuestions?: string[]) => {
       setMessages((prev) => [
         ...prev,
         {
@@ -153,6 +153,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           content,
           timestamp: now(),
           sources,
+          suggestedQuestions,
         },
       ]);
       if (sources.length === 0) {
@@ -186,6 +187,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
       let accumulated = "";
       let sources: Source[] = [];
+      let suggestedQuestions: string[] = [];
 
       const sessionMessages = activeSession?.messages ?? [];
       const history: HistoryMessage[] = sessionMessages
@@ -206,6 +208,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setIsStreaming(true);
             setStreamingContent(accumulated);
           },
+          onSuggestedQuestions: (sq) => {
+            suggestedQuestions = sq;
+          },
           onDone: () => {
             abortRef.current = null;
             setIsThinking(false);
@@ -215,6 +220,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             finalizeAnswer(
               accumulated || "I don't know based on the provided documents.",
               sources,
+              suggestedQuestions,
             );
           },
           onError: (detail) => {
@@ -223,7 +229,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setIsStreaming(false);
             setStreamingContent("");
             setStreamingSources([]);
-            if (accumulated) finalizeAnswer(accumulated, sources);
+            if (accumulated) finalizeAnswer(accumulated, sources, suggestedQuestions);
             setMessages((prev) => [
               ...prev,
               {

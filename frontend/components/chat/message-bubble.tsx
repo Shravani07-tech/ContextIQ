@@ -20,6 +20,7 @@ import { AlertCircle, RotateCcw } from "lucide-react";
 
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { SourceCards } from "@/components/chat/source-cards";
+import { SuggestedQuestions } from "@/components/chat/suggested-questions";
 import { CopyButton } from "@/components/shared/copy-button";
 import { useChat } from "@/hooks/useChat";
 import type { ChatMessage } from "@/lib/types";
@@ -96,6 +97,10 @@ export function MessageBubble({
         {/* Citations under the answer (assistant messages only). */}
         {!isUser && message.sources && message.sources.length > 0 && (
           <SourceCards sources={message.sources} />
+        )}
+        {/* Suggested follow-up questions (assistant messages only). */}
+        {!isUser && message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
+          <SuggestedQuestions questions={message.suggestedQuestions} />
         )}
       </div>
 

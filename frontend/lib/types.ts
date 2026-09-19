@@ -45,6 +45,7 @@ export interface Source {
 export interface ChatResponse {
   answer: string;
   sources: Source[];
+  suggested_questions?: string[];
 }
 
 export interface HistoryMessage {
@@ -73,6 +74,8 @@ export interface ChatMessage {
   timestamp?: string;
   /** Chunks the answer was grounded on (assistant messages only). */
   sources?: Source[];
+  /** Suggested follow-up questions (assistant messages only). */
+  suggestedQuestions?: string[];
   /** Set on a failed system message so the UI can offer a "Retry"
       action that resends this exact question. */
   retryQuestion?: string;

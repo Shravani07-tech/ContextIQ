@@ -275,6 +275,7 @@ export const api = {
     callbacks: {
       onSources: (sources: Source[]) => void;
       onToken: (text: string) => void;
+      onSuggestedQuestions?: (questions: string[]) => void;
       onDone: () => void;
       onError: (detail: string) => void;
     },
@@ -335,7 +336,9 @@ export const api = {
           const event = JSON.parse(dataLine.slice("data: ".length));
           if (event.type === "sources") callbacks.onSources(event.sources);
           else if (event.type === "token") callbacks.onToken(event.text);
-          else if (event.type === "done") {
+          else if (event.type === "suggested_questions") {
+            callbacks.onSuggestedQuestions?.(event.questions);
+          } else if (event.type === "done") {
             callbacks.onDone();
             return;
           } else if (event.type === "error") {
