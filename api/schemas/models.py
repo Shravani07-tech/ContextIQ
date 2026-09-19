@@ -238,15 +238,48 @@ class ResearchResponse(BaseModel):
     """Structured synthesis across multiple documents."""
 
     answer: str = Field(
-        description="Structured synthesis in markdown (Executive Summary, "
-        "Document Findings, Cross-Document Comparison, Differences, Gaps)"
+        description="Structured markdown synthesis across documents"
     )
     sources: list[Source] = Field(
-        description="All evidence chunks used, from multiple documents"
+        description="All sources cited across the synthesis"
     )
     doc_count: int = Field(
-        description="Number of distinct documents that contributed evidence",
+        description="Number of distinct documents represented in retrieval"
+    )
+
+
+class ReportExportRequest(BaseModel):
+    """Payload sent to /research/export to generate a downloadable report."""
+
+    format: str = Field(
+        default="markdown",
+        description="Export format: 'markdown', 'pdf', or 'txt'",
+    )
+    question: str = Field(description="The research question")
+    answer: str = Field(description="The research answer / synthesis")
+    sources: list[Source] = Field(
+        default_factory=list,
+        description="Source citations included in the report",
+    )
+    doc_count: int = Field(
         default=0,
+        description="Total documents analyzed in the research",
+    )
+    citation_verification: list[VerificationItem] = Field(
+        default_factory=list,
+        description="Verification items evaluated for claims",
+    )
+    contradictions: list[ContradictionItem] = Field(
+        default_factory=list,
+        description="Contradiction items detected across evidence",
+    )
+    collection_name: str | None = Field(
+        default=None,
+        description="Active collection name, if scoped",
+    )
+    document_filter: str | None = Field(
+        default=None,
+        description="Active document filter, if scoped",
     )
 
 

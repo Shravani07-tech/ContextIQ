@@ -13,11 +13,12 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from api.deps import get_rag_service
-from api.schemas.models import ResearchRequest, ResearchResponse
+from api.schemas.models import ReportExportRequest, ResearchRequest, ResearchResponse
+from report_service import ResearchReportService
 
 logger = logging.getLogger(__name__)
 
@@ -83,3 +84,47 @@ async def research_stream(body: ResearchRequest) -> StreamingResponse:
             yield f'data: {json.dumps({"type": "error", "detail": "Research synthesis failed."})}\n\n'
 
     return StreamingResponse(_iter(), media_type="text/event-stream")
+
+
+@router.post("/research/export")
+async def export_research_report(body: ReportExportRequest) -> Response:
+    """
+    Generate and download a research report in Markdown, PDF, or Plain Text format.
+    """
+    fmt = (body.format or "markdown").lower().strip()
+    payload = body.model_dump()
+
+    svc = ResearchReportService()
+
+    try:
+        if fmt == "pdf":
+            pdf_bytes = svc.generate_pdf(payload)
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": 'attachment; filename="contextiq-research-report.pdf"'
+                },
+            )
+        elif fmt in ("txt", "text", "plain"):
+            txt_content = svc.generate_txt(payload)
+            return Response(
+                content=txt_content,
+                media_type="text/plain; charset=utf-8",
+                headers={
+                    "Content-Disposition": 'attachment; filename="contextiq-research-report.txt"'
+                },
+            )
+        else:
+            md_content = svc.generate_markdown(payload)
+            return Response(
+                content=md_content,
+                media_type="text/markdown; charset=utf-8",
+                headers={
+                    "Content-Disposition": 'attachment; filename="contextiq-research-report.md"'
+                },
+            )
+    except Exception as e:
+        logger.exception("Failed to generate export report")
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
