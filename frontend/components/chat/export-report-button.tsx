@@ -7,7 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api";
-import type { ChatMessage, Source } from "@/lib/types";
+import type { ChatMessage } from "@/lib/types";
 
 export function ExportReportButton({
   message,
@@ -46,8 +46,9 @@ export function ExportReportButton({
       document.body.removeChild(a);
 
       toast.success(`Exported research report as ${format.toUpperCase()}`);
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to export report");
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to export report";
+      toast.error(errorMsg);
     } finally {
       setDownloadingFormat(null);
       setOpen(false);
