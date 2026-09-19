@@ -129,6 +129,10 @@ class ChatResponse(BaseModel):
     sources: list[Source] = Field(
         description="Chunks the answer was based on, most relevant first"
     )
+    suggested_questions: list[str] = Field(
+        default_factory=list,
+        description="Suggested follow-up questions grounded in the context",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -141,6 +145,10 @@ class ChatResponse(BaseModel):
                         "similarity": 0.85,
                         "page": None,
                     }
+                ],
+                "suggested_questions": [
+                    "What evidence supports these tier distinctions?",
+                    "How are the tiers updated over time?"
                 ],
             }
         }

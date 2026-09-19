@@ -19,6 +19,7 @@ from collections.abc import Iterator
 from config import TOP_K
 from llm import LLM
 from retrieval import HybridRetriever
+from suggested_question_service import SuggestedQuestionService
 
 # Backward-compatibility alias: code that imports "from rag import Retriever"
 # (including tests) continues to work; new code should use HybridRetriever.
@@ -122,6 +123,7 @@ def answer_question(
         return {
             "answer": "I don't know based on the provided documents.",
             "sources": [],
+            "suggested_questions": [],
         }
 
     prompt = build_prompt(question, chunks)
@@ -142,7 +144,21 @@ def answer_question(
         }
         for chunk in chunks
     ]
-    return {"answer": answer, "sources": sources}
+
+    suggested_questions = []
+    try:
+        suggested_service = SuggestedQuestionService(llm=LLM())
+        suggested_questions = suggested_service.generate_suggestions(
+            question, answer, chunks
+        )
+    except Exception:
+        suggested_questions = []
+
+    return {
+        "answer": answer,
+        "sources": sources,
+        "suggested_questions": suggested_questions,
+    }
 
 
 def answer_question_stream(
@@ -189,6 +205,7 @@ def answer_question_stream(
             "type": "token",
             "text": "I don't know based on the provided documents.",
         }
+        yield {"type": "suggested_questions", "questions": []}
         return
 
     prompt = build_prompt(question, chunks)
@@ -200,14 +217,26 @@ def answer_question_stream(
     # fraction of the re-renders (Markdown is re-parsed on each update).
     # Flush on sentence end / newline, or once a buffer passes ~48 chars
     # at a word boundary, so the first words still appear promptly.
+    full_answer = ""
     buffer = ""
     for delta in llm.generate_stream(SYSTEM_PROMPT, prompt, history=safe_history):
+        full_answer += delta
         buffer += delta
         if buffer[-1:] in ".!?\n" or (len(buffer) >= 48 and buffer[-1:] == " "):
             yield {"type": "token", "text": buffer}
             buffer = ""
     if buffer:
         yield {"type": "token", "text": buffer}
+
+    try:
+        suggested_service = SuggestedQuestionService(llm=LLM())
+        suggestions = suggested_service.generate_suggestions(
+            question, full_answer, chunks
+        )
+        if suggestions:
+            yield {"type": "suggested_questions", "questions": suggestions}
+    except Exception:
+        pass
 
 
 def main() -> None:
