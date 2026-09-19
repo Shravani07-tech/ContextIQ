@@ -136,6 +136,19 @@ class VerificationItem(BaseModel):
     reason: str = Field(description="Concise explanation for the verification status")
 
 
+class ContradictionItem(BaseModel):
+    """Result of detecting a contradiction or conflicting claims between sources."""
+
+    topic: str = Field(description="Short topic of conflicting claims")
+    status: str = Field(description="CONTRADICTION or POTENTIAL_CONTRADICTION")
+    claim_a: str = Field(description="First source claim statement")
+    claim_b: str = Field(description="Second source claim statement")
+    source_a: str = Field(description="First source identifier or filename")
+    source_b: str = Field(description="Second source identifier or filename")
+    severity: str = Field(description="Severity: HIGH, MEDIUM, or LOW")
+    reason: str = Field(description="Explanation of the conflict")
+
+
 class ChatResponse(BaseModel):
     """Grounded answer plus the sources it came from."""
 
@@ -150,6 +163,10 @@ class ChatResponse(BaseModel):
     citation_verification: list[VerificationItem] = Field(
         default_factory=list,
         description="Verification results evaluating whether claims are supported by sources",
+    )
+    contradictions: list[ContradictionItem] = Field(
+        default_factory=list,
+        description="Detected contradictions or conflicting statements between evidence sources",
     )
 
     model_config = {
