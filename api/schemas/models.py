@@ -207,6 +207,64 @@ class ResearchResponse(BaseModel):
     )
 
 
+# --- comparison --------------------------------------------------------------
+
+
+class CompareRequest(BaseModel):
+    """Request body for comparing two or more selected documents."""
+
+    filenames: list[str] = Field(
+        ...,
+        description="List of document filenames to compare (at least 2 documents, max 5)",
+    )
+    question: str | None = Field(
+        default="Compare the key findings, metrics, and changes between these documents.",
+        description="Optional specific comparison question",
+    )
+    collection_id: str | None = Field(
+        default=None,
+        description="Restrict comparison scope to documents within this collection ID",
+    )
+
+    @field_validator("filenames")
+    @classmethod
+    def validate_filenames(cls, v: list[str]) -> list[str]:
+        cleaned = [f.strip() for f in v if isinstance(f, str) and f.strip()]
+        if len(cleaned) < 2:
+            raise ValueError("Comparison requires at least 2 documents.")
+        if len(cleaned) > 5:
+            raise ValueError("Comparison supports at most 5 documents at a time.")
+        return cleaned
+
+
+class CompareResponse(BaseModel):
+    """Structured response comparing selected documents."""
+
+    filenames: list[str] = Field(description="Filenames of compared documents")
+    question: str = Field(description="The comparison question answered")
+    summary: str = Field(description="Executive summary of the comparison")
+    similarities: list[str] = Field(
+        default_factory=list,
+        description="Key similarities found across the documents",
+    )
+    differences: list[str] = Field(
+        default_factory=list,
+        description="Key differences found across the documents",
+    )
+    document_a_only: list[str] = Field(
+        default_factory=list,
+        description="Points exclusive to the first document",
+    )
+    document_b_only: list[str] = Field(
+        default_factory=list,
+        description="Points exclusive to the second document",
+    )
+    sources: list[Source] = Field(
+        default_factory=list,
+        description="Source evidence chunks used for comparison",
+    )
+
+
 # --- documents / ingestion ---------------------------------------------------
 
 

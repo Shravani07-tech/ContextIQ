@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.deps import get_rag_service
-from api.routers import chat, collections, documents, research, system
+from api.routers import chat, collections, compare, documents, research, system
 from config import CORS_ORIGINS, MAX_UPLOAD_MB
 
 # Total-request ceiling, well above one file's cap to allow legitimate
@@ -159,3 +159,4 @@ app.include_router(system.router)
 app.include_router(documents.router)
 app.include_router(chat.router)
 app.include_router(research.router, tags=["research"])
+app.include_router(compare.router)
