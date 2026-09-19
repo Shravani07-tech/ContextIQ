@@ -26,6 +26,7 @@ import type {
   TagListResponse,
   UploadResponse,
   VerificationItem,
+  ContradictionItem,
 } from "@/lib/types";
 
 
@@ -292,6 +293,7 @@ export const api = {
       onToken: (text: string) => void;
       onSuggestedQuestions?: (questions: string[]) => void;
       onCitationVerification?: (verifications: VerificationItem[]) => void;
+      onContradictions?: (contradictions: ContradictionItem[]) => void;
       onDone: () => void;
       onError: (detail: string) => void;
     },
@@ -356,6 +358,8 @@ export const api = {
             callbacks.onSuggestedQuestions?.(event.questions);
           } else if (event.type === "citation_verification") {
             callbacks.onCitationVerification?.(event.verifications);
+          } else if (event.type === "contradictions") {
+            callbacks.onContradictions?.(event.contradictions);
           } else if (event.type === "done") {
             callbacks.onDone();
             return;

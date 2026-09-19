@@ -49,11 +49,23 @@ export interface VerificationItem {
   reason: string;
 }
 
+export interface ContradictionItem {
+  topic: string;
+  status: "CONTRADICTION" | "POTENTIAL_CONTRADICTION";
+  claim_a: string;
+  claim_b: string;
+  source_a: string;
+  source_b: string;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+  reason: string;
+}
+
 export interface ChatResponse {
   answer: string;
   sources: Source[];
   suggested_questions?: string[];
   citation_verification?: VerificationItem[];
+  contradictions?: ContradictionItem[];
 }
 
 export interface HistoryMessage {
@@ -86,6 +98,8 @@ export interface ChatMessage {
   suggestedQuestions?: string[];
   /** Citation verification results evaluating support of claims. */
   citationVerification?: VerificationItem[];
+  /** Contradictions detected between evidence sources. */
+  contradictions?: ContradictionItem[];
   /** Set on a failed system message so the UI can offer a "Retry"
       action that resends this exact question. */
   retryQuestion?: string;

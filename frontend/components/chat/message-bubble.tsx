@@ -18,6 +18,7 @@
 
 import { AlertCircle, RotateCcw } from "lucide-react";
 
+import { ContradictionCards } from "@/components/chat/contradiction-cards";
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { SourceCards } from "@/components/chat/source-cards";
 import { SuggestedQuestions } from "@/components/chat/suggested-questions";
@@ -100,6 +101,10 @@ export function MessageBubble({
             sources={message.sources}
             verifications={message.citationVerification}
           />
+        )}
+        {/* Contradictions detected between evidence sources (assistant messages only). */}
+        {!isUser && message.contradictions && message.contradictions.length > 0 && (
+          <ContradictionCards contradictions={message.contradictions} />
         )}
         {/* Suggested follow-up questions (assistant messages only). */}
         {!isUser && message.suggestedQuestions && message.suggestedQuestions.length > 0 && (

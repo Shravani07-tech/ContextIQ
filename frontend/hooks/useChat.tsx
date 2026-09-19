@@ -34,6 +34,7 @@ import { api } from "@/lib/api";
 import type {
   ChatMessage,
   ChatSession,
+  ContradictionItem,
   DocumentsResponse,
   HistoryMessage,
   Source,
@@ -184,6 +185,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       sources: Source[],
       suggestedQuestions?: string[],
       citationVerification?: VerificationItem[],
+      contradictions?: ContradictionItem[],
     ) => {
       setMessages((prev) => [
         ...prev,
@@ -195,6 +197,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           sources,
           suggestedQuestions,
           citationVerification,
+          contradictions,
         },
       ]);
       if (sources.length === 0) {
@@ -230,6 +233,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       let sources: Source[] = [];
       let suggestedQuestions: string[] = [];
       let citationVerification: VerificationItem[] = [];
+      let contradictions: ContradictionItem[] = [];
 
       const sessionMessages = activeSession?.messages ?? [];
       const history: HistoryMessage[] = sessionMessages
@@ -256,6 +260,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           onCitationVerification: (cv) => {
             citationVerification = cv;
           },
+          onContradictions: (c) => {
+            contradictions = c;
+          },
           onDone: () => {
             abortRef.current = null;
             setIsThinking(false);
@@ -267,6 +274,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               sources,
               suggestedQuestions,
               citationVerification,
+              contradictions,
             );
           },
           onError: (detail) => {
@@ -275,7 +283,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setIsStreaming(false);
             setStreamingContent("");
             setStreamingSources([]);
-            if (accumulated) finalizeAnswer(accumulated, sources, suggestedQuestions, citationVerification);
+            if (accumulated) finalizeAnswer(accumulated, sources, suggestedQuestions, citationVerification, contradictions);
             setMessages((prev) => [
               ...prev,
               {
