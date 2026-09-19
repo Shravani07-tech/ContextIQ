@@ -10,12 +10,14 @@ your machine (no cloud APIs, no data leaves your computer).
 
 ![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20Ollama-blue)
 
-## Features (ContextIQ 2.0 — Phase C4: Citation Verification)
+## Features (ContextIQ 2.0 — Phase C5: Contradiction Detection)
 
+- **Contradiction Detection Engine**: Analyzes retrieved evidence passages to detect conflicting claims or incompatible statements between source documents, classifying findings as `CONTRADICTION` or `POTENTIAL_CONTRADICTION`.
+- **False-Positive Safeguards**: Explicitly guards against false positives by differentiating real contradictions from differing reporting dates, currency units, geographic regions, or forecast vs. actual metrics.
+- **Strict Scope Isolation**: Contradiction analysis uses only evidence from the active query scope, preserving collection and document security boundaries.
+- **Interactive Contradiction UI**: Displays structured contradiction cards detailing conflicting claims side-by-side with source attribution (`Source A` vs `Source B`), severity levels (`HIGH`, `MEDIUM`, `LOW`), and concise explanatory reasons.
 - **Citation Verification Engine**: Evaluates generated factual claims against cited document evidence, classifying each claim into `SUPPORTED`, `PARTIALLY_SUPPORTED`, `UNSUPPORTED`, or `UNVERIFIABLE`.
-- **Claim Extraction & Evidence Mapping**: Automatically extracts core factual claims from RAG answers and maps them to specific source chunks and document citations without altering the original answer text.
-- **Prompt Injection & Untrusted Context Isolation**: Treats retrieved document text strictly as untrusted evidence context, resisting embedded prompt injections or override instructions.
-- **Non-Blocking Failure Isolation**: Verification errors or LLM timeouts fall back gracefully to `UNVERIFIABLE` or empty status without delaying or breaking the primary Chat response.
+- **Non-Blocking Failure Isolation**: Contradiction detection or LLM timeouts fall back gracefully to `contradictions = []` without affecting or delaying the primary Chat answer.
 - **Interactive Verification UI**: Source cards display color-coded status badges (`✓ Supported`, `⚠ Partially supported`, `✕ Unsupported`, `? Unverifiable`) with expandable claim breakdowns and explanations.
 - **Suggested Follow-up Questions**: Generates 3-5 grounded, natural follow-up questions tailored to the active conversation and document scope.
 - **Automatic Document Summarization**: Automatically generates grounded overviews and key points for indexed documents using local Ollama LLM infrastructure.
