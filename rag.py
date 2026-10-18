@@ -19,6 +19,7 @@ from collections.abc import Iterator
 from citation_verification_service import CitationVerificationService
 from contradiction_detection_service import ContradictionDetectionService
 from config import TOP_K
+from evidence_service import EvidenceService
 from llm import LLM
 from retrieval import HybridRetriever
 from suggested_question_service import SuggestedQuestionService
@@ -175,12 +176,23 @@ def answer_question(
     except Exception:
         contradictions = []
 
+    # Deterministic (no LLM call): rates each verified claim from the
+    # citation check, the passages, and any contradictions.
+    evidence_assessment = None
+    try:
+        evidence_assessment = EvidenceService().assess_answer(
+            citation_verification, chunks, contradictions
+        )
+    except Exception:
+        evidence_assessment = None
+
     return {
         "answer": answer,
         "sources": sources,
         "suggested_questions": suggested_questions,
         "citation_verification": citation_verification,
         "contradictions": contradictions,
+        "evidence_assessment": evidence_assessment,
     }
 
 
@@ -216,7 +228,10 @@ def answer_question_stream(
             "chunk_id": chunk["chunk_id"],
             "similarity": chunk["similarity"],
             "page": chunk.get("page"),
+            "slide": chunk.get("slide"),
+            "sheet": chunk.get("sheet"),
             "section": chunk.get("section"),
+            "extraction_method": chunk.get("extraction_method"),
             "document_id": chunk.get("document_id"),
         }
         for chunk in chunks
@@ -262,6 +277,7 @@ def answer_question_stream(
     except Exception:
         pass
 
+    verifications = []
     try:
         verification_service = CitationVerificationService(llm=LLM())
         verifications = verification_service.verify_citations(
@@ -272,6 +288,7 @@ def answer_question_stream(
     except Exception:
         pass
 
+    contradictions = []
     try:
         contradiction_service = ContradictionDetectionService(llm=LLM())
         contradictions = contradiction_service.detect_contradictions(
@@ -279,6 +296,15 @@ def answer_question_stream(
         )
         if contradictions:
             yield {"type": "contradictions", "contradictions": contradictions}
+    except Exception:
+        pass
+
+    try:
+        assessment = EvidenceService().assess_answer(
+            verifications, chunks, contradictions
+        )
+        if assessment:
+            yield {"type": "evidence_assessment", "assessment": assessment}
     except Exception:
         pass
 

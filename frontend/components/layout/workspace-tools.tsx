@@ -6,8 +6,9 @@
 // everywhere. Labels collapse to icons on narrow screens but keep their
 // accessible names.
 
-import { CalendarClock, Scale } from "lucide-react";
+import { CalendarClock, Scale, ShieldCheck } from "lucide-react";
 
+import { EvidenceDialog } from "@/components/insights/evidence-dialog";
 import { TimelineDialog } from "@/components/insights/timeline-dialog";
 import { CompareDialog } from "@/components/sidebar/compare-dialog";
 
@@ -27,6 +28,14 @@ export function WorkspaceTools() {
           <button type="button" className="tool-button" aria-label="Timeline">
             <CalendarClock className="size-3.5" aria-hidden />
             <span className="hidden lg:inline">Timeline</span>
+          </button>
+        }
+      />
+      <EvidenceDialog
+        trigger={
+          <button type="button" className="tool-button" aria-label="Check a claim">
+            <ShieldCheck className="size-3.5" aria-hidden />
+            <span className="hidden lg:inline">Check claim</span>
           </button>
         }
       />

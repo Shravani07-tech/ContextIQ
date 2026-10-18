@@ -7,7 +7,7 @@
 
 from pydantic import BaseModel, Field, field_validator
 
-from api.schemas.insights import TimelineEvent
+from api.schemas.insights import DocumentCoverage, EvidenceAssessment, TimelineEvent
 
 
 # --- chat -------------------------------------------------------------------
@@ -170,6 +170,10 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description="Detected contradictions or conflicting statements between evidence sources",
     )
+    evidence_assessment: EvidenceAssessment | None = Field(
+        default=None,
+        description="Rule-based evidence rating per verified claim (not a probability)",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -292,6 +296,10 @@ class ReportExportRequest(BaseModel):
         max_length=200,
         description="Timeline events to include (from POST /timeline)",
     )
+    evidence_assessment: EvidenceAssessment | None = Field(
+        default=None,
+        description="Evidence assessment to include in the report",
+    )
 
 
 # --- comparison --------------------------------------------------------------
@@ -349,6 +357,10 @@ class CompareResponse(BaseModel):
     sources: list[Source] = Field(
         default_factory=list,
         description="Source evidence chunks used for comparison",
+    )
+    coverage: list[DocumentCoverage] = Field(
+        default_factory=list,
+        description="Per-document evidence coverage (passages retrieved per document)",
     )
 
 

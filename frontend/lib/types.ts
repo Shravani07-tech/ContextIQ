@@ -38,6 +38,10 @@ export interface Source {
   page?: number | null;
   /** Document section heading, if known. */
   section?: string | null;
+  /** 1-based slide number (presentations), if known. */
+  slide?: number | null;
+  /** Worksheet name (spreadsheets), if known. */
+  sheet?: string | null;
   /** Unique document identifier. */
   document_id?: string | null;
 }
@@ -66,6 +70,7 @@ export interface ChatResponse {
   suggested_questions?: string[];
   citation_verification?: VerificationItem[];
   contradictions?: ContradictionItem[];
+  evidence_assessment?: EvidenceAssessment | null;
 }
 
 export interface HistoryMessage {
@@ -100,6 +105,10 @@ export interface ChatMessage {
   citationVerification?: VerificationItem[];
   /** Contradictions detected between evidence sources. */
   contradictions?: ContradictionItem[];
+  /** Rule-based evidence rating per verified claim. */
+  evidenceAssessment?: EvidenceAssessment | null;
+  /** The question this answer responds to (used for report export). */
+  question?: string;
   /** Set on a failed system message so the UI can offer a "Retry"
       action that resends this exact question. */
   retryQuestion?: string;
@@ -252,6 +261,7 @@ export interface CompareResponse {
   document_a_only: string[];
   document_b_only: string[];
   sources: Source[];
+  coverage?: DocumentCoverage[];
 }
 
 
@@ -320,4 +330,70 @@ export interface TimelineResponse {
   documents_analyzed: number;
   events_discarded: number;
   warnings: string[];
+}
+
+export type EvidenceRating =
+  | "STRONG"
+  | "MODERATE"
+  | "LIMITED"
+  | "CONTESTED"
+  | "UNSUPPORTED"
+  | "INSUFFICIENT";
+
+export interface EvidencePassage extends SourceRef {
+  relevance: "HIGH" | "MEDIUM" | "LOW" | "NONE";
+  cited_by_check: boolean;
+  source_group: string;
+}
+
+export interface ClaimAssessment {
+  claim: string;
+  rating: EvidenceRating;
+  basis: "model-assisted" | "heuristic";
+  factors: {
+    relevance: string;
+    directness: string;
+    independent_sources: number;
+    duplicates_collapsed: number;
+    contradiction: "NONE" | "POTENTIAL" | "CONFLICT";
+  };
+  explanation: string[];
+  passages: EvidencePassage[];
+  contradictions: {
+    topic?: string | null;
+    status?: string | null;
+    severity?: string | null;
+    source_a?: string | null;
+    source_b?: string | null;
+  }[];
+}
+
+export interface EvidenceAssessment {
+  claims: ClaimAssessment[];
+  counts: Record<EvidenceRating, number>;
+  overall: string;
+  documents_considered: number;
+  independent_sources: number;
+  disclaimer: string;
+}
+
+export interface EvidenceAssessRequest extends ScopeParams {
+  claim: string;
+  check_contradictions?: boolean;
+}
+
+export interface EvidenceAssessResponse {
+  claim: string;
+  scope: string;
+  assessment: ClaimAssessment;
+  disclaimer: string;
+  model_checked: boolean;
+  warnings: string[];
+}
+
+export interface DocumentCoverage {
+  filename: string;
+  passages: number;
+  best_similarity?: number | null;
+  note?: string | null;
 }

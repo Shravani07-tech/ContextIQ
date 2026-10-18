@@ -107,3 +107,78 @@ class TimelineResponse(BaseModel):
     documents_analyzed: int
     events_discarded: int = 0
     warnings: list[str] = Field(default_factory=list)
+
+
+# --- C8 evidence assessment ----------------------------------------------------
+
+
+class EvidencePassage(SourceRef):
+    relevance: str = Field(description="HIGH|MEDIUM|LOW|NONE keyword overlap with the claim")
+    cited_by_check: bool = Field(description="True when the citation check cited this passage")
+    source_group: str = Field(description="Independent-source group (near-duplicates share one)")
+
+
+class EvidenceFactors(BaseModel):
+    relevance: str
+    directness: str = Field(description="DIRECT|PARTIAL|NONE|UNKNOWN|NOT_ASSESSED")
+    independent_sources: int
+    duplicates_collapsed: int = 0
+    contradiction: str = Field(description="NONE|POTENTIAL|CONFLICT")
+
+
+class RelatedContradiction(BaseModel):
+    topic: str | None = None
+    status: str | None = None
+    severity: str | None = None
+    source_a: str | None = None
+    source_b: str | None = None
+
+
+class ClaimAssessment(BaseModel):
+    claim: str
+    rating: str = Field(description="STRONG|MODERATE|LIMITED|CONTESTED|UNSUPPORTED|INSUFFICIENT")
+    basis: str = Field(description="model-assisted | heuristic")
+    factors: EvidenceFactors
+    explanation: list[str]
+    passages: list[EvidencePassage] = Field(default_factory=list)
+    contradictions: list[RelatedContradiction] = Field(default_factory=list)
+
+
+class EvidenceAssessment(BaseModel):
+    claims: list[ClaimAssessment]
+    counts: dict[str, int]
+    overall: str
+    documents_considered: int
+    independent_sources: int
+    disclaimer: str
+
+
+class EvidenceAssessRequest(ScopedRequest):
+    claim: str = Field(..., description="The statement to check against your documents")
+    check_contradictions: bool = True
+
+    @field_validator("claim")
+    @classmethod
+    def _claim(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("claim must not be empty")
+        if len(v) > 1000:
+            raise ValueError("claim must be at most 1000 characters")
+        return v
+
+
+class EvidenceAssessResponse(BaseModel):
+    claim: str
+    scope: str
+    assessment: ClaimAssessment
+    disclaimer: str
+    model_checked: bool = Field(description="False when the local model was unavailable")
+    warnings: list[str] = Field(default_factory=list)
+
+
+class DocumentCoverage(BaseModel):
+    filename: str
+    passages: int
+    best_similarity: float | None = None
+    note: str | None = None

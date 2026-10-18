@@ -36,6 +36,7 @@ import type {
   ChatSession,
   ContradictionItem,
   DocumentsResponse,
+  EvidenceAssessment,
   HistoryMessage,
   Source,
   VerificationItem,
@@ -186,6 +187,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       suggestedQuestions?: string[],
       citationVerification?: VerificationItem[],
       contradictions?: ContradictionItem[],
+      extras?: Partial<ChatMessage>,
     ) => {
       setMessages((prev) => [
         ...prev,
@@ -198,6 +200,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           suggestedQuestions,
           citationVerification,
           contradictions,
+          ...extras,
         },
       ]);
       if (sources.length === 0) {
@@ -234,6 +237,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       let suggestedQuestions: string[] = [];
       let citationVerification: VerificationItem[] = [];
       let contradictions: ContradictionItem[] = [];
+      let evidenceAssessment: EvidenceAssessment | null = null;
 
       const sessionMessages = activeSession?.messages ?? [];
       const history: HistoryMessage[] = sessionMessages
@@ -263,6 +267,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           onContradictions: (c) => {
             contradictions = c;
           },
+          onEvidenceAssessment: (a) => {
+            evidenceAssessment = a;
+          },
           onDone: () => {
             abortRef.current = null;
             setIsThinking(false);
@@ -275,6 +282,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               suggestedQuestions,
               citationVerification,
               contradictions,
+              { evidenceAssessment, question },
             );
           },
           onError: (detail) => {
@@ -283,7 +291,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             setIsStreaming(false);
             setStreamingContent("");
             setStreamingSources([]);
-            if (accumulated) finalizeAnswer(accumulated, sources, suggestedQuestions, citationVerification, contradictions);
+            if (accumulated)
+              finalizeAnswer(accumulated, sources, suggestedQuestions, citationVerification, contradictions, {
+                evidenceAssessment,
+                question,
+              });
             setMessages((prev) => [
               ...prev,
               {
@@ -338,6 +350,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             finalizeAnswer(
               accumulated || "I cannot synthesize an answer — the documents do not contain sufficient relevant information.",
               sources,
+              undefined,
+              undefined,
+              undefined,
+              { question },
             );
           },
           onError: (detail) => {

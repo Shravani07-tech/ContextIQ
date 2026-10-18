@@ -118,7 +118,7 @@ export function CompareDialog({
         }
       />
 
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col overflow-hidden p-6">
+      <DialogContent className="max-h-[85vh] flex flex-col overflow-hidden p-6 sm:max-w-3xl">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Scale className="size-5 text-primary" />
@@ -264,6 +264,26 @@ export function CompareDialog({
                   Compared: {result.filenames.join(" vs ")}
                 </span>
               </div>
+
+              {/* Evidence coverage per document (C8): a thin side is visible. */}
+              {result.coverage && result.coverage.length > 0 && (
+                <ul aria-label="Evidence coverage" className="flex flex-wrap gap-1.5">
+                  {result.coverage.map((c) => (
+                    <li
+                      key={c.filename}
+                      title={c.note ?? undefined}
+                      className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                        c.note
+                          ? "border-warning/30 bg-warning-soft text-warning"
+                          : "border-border bg-secondary text-muted-foreground"
+                      }`}
+                    >
+                      {c.filename}: {c.passages} passage{c.passages === 1 ? "" : "s"}
+                      {c.note ? " — limited evidence" : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
 
               {/* Summary */}
               {result.summary && (

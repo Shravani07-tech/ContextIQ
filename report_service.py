@@ -345,6 +345,26 @@ class ResearchReportService:
                 )
             sections.append(("Timeline", lines))
 
+        evidence = payload.get("evidence_assessment") or {}
+        if evidence.get("claims"):
+            lines = [evidence.get("disclaimer") or "", ""]
+            if evidence.get("overall"):
+                lines += [f"**Overall:** {evidence['overall']}", ""]
+            for c in evidence["claims"]:
+                f = c.get("factors") or {}
+                lines.append(
+                    f"- **{c.get('rating', 'INSUFFICIENT')}** ({c.get('basis', 'heuristic')}): "
+                    f"{c.get('claim', '')}"
+                )
+                lines.append(
+                    f"  - Independent sources: {f.get('independent_sources', 0)}; "
+                    f"directness: {f.get('directness', 'NOT_ASSESSED')}; "
+                    f"contradiction: {f.get('contradiction', 'NONE')}"
+                )
+                for reason in (c.get("explanation") or [])[:4]:
+                    lines.append(f"  - {reason}")
+            sections.append(("Evidence Assessment", lines))
+
         return sections
 
     def _escape_html(self, text: str) -> str:

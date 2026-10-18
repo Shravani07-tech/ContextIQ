@@ -241,9 +241,9 @@ Evaluate the claims in ANSWER TO VERIFY against CONTEXT EVIDENCE."""
                         if cid_clean in valid_chunk_ids or not valid_chunk_ids:
                             citation_ids.append(cid_clean)
 
-            # If no valid citation IDs provided by model, default to all valid chunk IDs if available
-            if not citation_ids and valid_chunk_ids:
-                citation_ids = sorted(list(valid_chunk_ids))
+            # No valid citation from the model stays empty: attributing the
+            # claim to every retrieved chunk would invent citation links.
+            # The evidence layer (evidence_service.py) locates passages itself.
 
             reason = item.get("reason")
             if not isinstance(reason, str) or not reason.strip():

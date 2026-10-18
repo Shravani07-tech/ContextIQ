@@ -18,6 +18,7 @@ from config import (
     COMPARISON_MAX_CHUNKS_PER_DOC,
     COMPARISON_MAX_INPUT_CHARS,
 )
+from evidence_service import EvidenceService
 from llm import LLM
 from retrieval import HybridRetriever
 from scope import resolve_scope
@@ -194,6 +195,7 @@ class ComparisonService:
                 "document_a_only": [],
                 "document_b_only": [],
                 "sources": [],
+                "coverage": EvidenceService().coverage_by_document(filenames, []),
             }
 
         # 3. Formulate Prompt & Generate Comparison
@@ -242,4 +244,5 @@ class ComparisonService:
             "document_a_only": parsed["document_a_only"],
             "document_b_only": parsed["document_b_only"],
             "sources": sources,
+            "coverage": EvidenceService().coverage_by_document(filenames, all_chunks),
         }

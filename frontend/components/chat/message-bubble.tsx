@@ -20,6 +20,7 @@ import { AlertCircle, RotateCcw } from "lucide-react";
 
 import { ContradictionCards } from "@/components/chat/contradiction-cards";
 import { ExportReportButton } from "@/components/chat/export-report-button";
+import { EvidencePanel } from "@/components/insights/evidence-view";
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { SourceCards } from "@/components/chat/source-cards";
 import { SuggestedQuestions } from "@/components/chat/suggested-questions";
@@ -107,6 +108,8 @@ export function MessageBubble({
         {!isUser && message.contradictions && message.contradictions.length > 0 && (
           <ContradictionCards contradictions={message.contradictions} />
         )}
+        {/* Rule-based evidence rating per verified claim (C8). */}
+        {!isUser && <EvidencePanel assessment={message.evidenceAssessment} />}
         {/* Suggested follow-up questions (assistant messages only). */}
         {!isUser && message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
           <SuggestedQuestions questions={message.suggestedQuestions} />
@@ -124,7 +127,7 @@ export function MessageBubble({
           </span>
         )}
         {!isUser && (
-          <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
             <CopyButton
               text={message.content}
               label="Copy answer"

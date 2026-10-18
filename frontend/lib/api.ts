@@ -17,6 +17,9 @@ import type {
   DocumentListResponse,
   DocumentSummary,
   DocumentsResponse,
+  EvidenceAssessment,
+  EvidenceAssessRequest,
+  EvidenceAssessResponse,
   HealthResponse,
   HistoryMessage,
   IndexResponse,
@@ -152,6 +155,18 @@ export const api = {
       120_000,
     ),
 
+
+  /** POST /evidence/assess — rate how well the documents support a statement. */
+  assessEvidence: (data: EvidenceAssessRequest) =>
+    request<EvidenceAssessResponse>(
+      "/evidence/assess",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      150_000,
+    ),
 
   /** POST /timeline — source-linked timeline for a collection or selection. */
   timeline: (data: TimelineRequest) =>
@@ -309,6 +324,7 @@ export const api = {
       onSuggestedQuestions?: (questions: string[]) => void;
       onCitationVerification?: (verifications: VerificationItem[]) => void;
       onContradictions?: (contradictions: ContradictionItem[]) => void;
+      onEvidenceAssessment?: (assessment: EvidenceAssessment) => void;
       onDone: () => void;
       onError: (detail: string) => void;
     },
@@ -375,6 +391,8 @@ export const api = {
             callbacks.onCitationVerification?.(event.verifications);
           } else if (event.type === "contradictions") {
             callbacks.onContradictions?.(event.contradictions);
+          } else if (event.type === "evidence_assessment") {
+            callbacks.onEvidenceAssessment?.(event.assessment);
           } else if (event.type === "done") {
             callbacks.onDone();
             return;
@@ -495,6 +513,7 @@ export const api = {
     collection_name?: string | null;
     document_filter?: string | null;
     timeline?: TimelineEvent[];
+    evidence_assessment?: EvidenceAssessment | null;
   }): Promise<Blob> => {
     const response = await fetch(`${API_URL}/research/export`, {
       method: "POST",

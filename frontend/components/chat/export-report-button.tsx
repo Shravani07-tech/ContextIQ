@@ -26,11 +26,12 @@ export function ExportReportButton({
     try {
       const blob = await api.exportResearchReport({
         format,
-        question: question || "Research Analysis",
+        question: question || message.question || "Research Analysis",
         answer: message.content,
         sources: message.sources || [],
         citation_verification: message.citationVerification,
         contradictions: message.contradictions,
+        evidence_assessment: message.evidenceAssessment,
       });
 
       const ext = format === "markdown" ? "md" : format;
