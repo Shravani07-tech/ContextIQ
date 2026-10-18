@@ -7,6 +7,7 @@
 
 import { Activity, BarChart3, Link2, SearchX } from "lucide-react";
 
+import { formatLocator } from "@/components/insights/source-locator";
 import { EmptyPanelState } from "@/components/shared/empty-panel-state";
 import { SimilarityBadge } from "@/components/shared/similarity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,9 +88,12 @@ export function RightPanel() {
                 key={source.chunk_id}
                 className="rounded-md border border-border bg-card p-3 transition-colors duration-150 hover:bg-accent"
               >
-                <p className="truncate text-[13px] font-semibold">
+                <p className="truncate text-[13px] font-semibold" title={source.filename}>
                   {source.filename}
                 </p>
+                {formatLocator(source) && (
+                  <p className="truncate text-xs text-muted-foreground">{formatLocator(source)}</p>
+                )}
                 <div className="mt-1 flex items-center justify-between gap-2">
                   <span className="truncate rounded-full bg-secondary px-2 py-0.5 font-mono text-xs text-muted-foreground">
                     {source.chunk_id}

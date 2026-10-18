@@ -52,6 +52,12 @@ export function ChatArea() {
 
   return (
     <div className="relative flex min-w-0 flex-1 flex-col">
+      {/* Mode + scope controls stay visible before the first message, so
+          Research / Deep research can be chosen for the opening question. */}
+      <div className="shrink-0 border-b border-border px-4 pt-2">
+        <ChatToolbar />
+      </div>
+
       <div
         ref={scrollRef}
         onScroll={handleScroll}
@@ -65,7 +71,6 @@ export function ChatArea() {
                 navigation. This keeps exactly one <h1> present at
                 all times without changing anything visible. */}
             <h1 className="sr-only">ContextIQ conversation</h1>
-            <ChatToolbar />
             <MessageList
               messages={messages}
               showTyping={isThinking}

@@ -419,9 +419,10 @@ export function DocumentLibraryDialog() {
                                   tag: t,
                                 })
                               }
+                              aria-label={`Remove tag ${t} from ${doc.filename}`}
                               className="rounded-full hover:bg-primary/20 p-0.5"
                             >
-                              <X className="size-2.5" />
+                              <X className="size-2.5" aria-hidden />
                             </button>
                           </span>
                         ))}
@@ -435,6 +436,8 @@ export function DocumentLibraryDialog() {
                               value={newTagText}
                               onChange={(e) => setNewTagText(e.target.value)}
                               placeholder="tag name..."
+                              aria-label={`New tag for ${doc.filename}`}
+                              maxLength={50}
                               autoFocus
                               className="h-6 w-24 px-1.5 text-xs"
                             />
@@ -447,9 +450,10 @@ export function DocumentLibraryDialog() {
                             <button
                               type="button"
                               onClick={() => setTagInputDoc(null)}
+                              aria-label="Cancel adding tag"
                               className="text-muted-foreground hover:text-foreground"
                             >
-                              <X className="size-3" />
+                              <X className="size-3" aria-hidden />
                             </button>
                           </form>
                         ) : (

@@ -1,13 +1,24 @@
 "use client";
 
-// Export Report Button — allows downloading research results in Markdown, PDF, or Plain Text.
+// Export Report Button — downloads an answer as a Markdown, PDF, or
+// Plain Text report. The report carries everything attached to the
+// answer: the question, sources, citation checks, contradictions, the
+// evidence assessment and, for deep research, the plan and gaps.
 
-import { Download, FileText, Loader2, FileCode, FileType } from "lucide-react";
-import { useState } from "react";
+import { Download, FileCode, FileText, FileType, Loader2 } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useDismissable } from "@/hooks/useDismissable";
 import { api } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import type { ChatMessage } from "@/lib/types";
+
+const FORMATS = [
+  { id: "markdown", label: "Markdown (.md)", ext: "md", icon: FileCode },
+  { id: "pdf", label: "PDF (.pdf)", ext: "pdf", icon: FileText },
+  { id: "txt", label: "Plain text (.txt)", ext: "txt", icon: FileType },
+] as const;
 
 export function ExportReportButton({
   message,
@@ -18,14 +29,19 @@ export function ExportReportButton({
 }) {
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismissable(containerRef, open, close, triggerRef);
 
-  const handleExport = async (format: "markdown" | "pdf" | "txt") => {
+  const handleExport = async (format: (typeof FORMATS)[number]) => {
     if (downloadingFormat) return;
 
-    setDownloadingFormat(format);
+    setDownloadingFormat(format.id);
+    setOpen(false);
     try {
       const blob = await api.exportResearchReport({
-        format,
+        format: format.id,
         question: question || message.question || "Research Analysis",
         answer: message.content,
         sources: message.sources || [],
@@ -38,71 +54,55 @@ export function ExportReportButton({
         research_status: message.research?.status ?? null,
         collection_name: message.research?.scope ?? null,
       });
-
-      const ext = format === "markdown" ? "md" : format;
-      const filename = `contextiq-research-report.${ext}`;
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast.success(`Exported research report as ${format.toUpperCase()}`);
+      const filename = `contextiq-research-report.${format.ext}`;
+      downloadBlob(blob, filename);
+      toast.success(`Exported ${filename}`);
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to export report";
-      toast.error(errorMsg);
+      toast.error("Export failed", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     } finally {
       setDownloadingFormat(null);
-      setOpen(false);
     }
   };
 
   return (
-    <div className="relative inline-block text-left">
+    <div ref={containerRef} className="relative inline-block text-left">
       <button
+        ref={triggerRef}
         type="button"
         disabled={Boolean(downloadingFormat)}
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded border border-border bg-secondary px-2 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:opacity-50"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-sm px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:opacity-50"
       >
         {downloadingFormat ? (
           <Loader2 className="size-3.5 animate-spin" aria-hidden />
         ) : (
           <Download className="size-3.5" aria-hidden />
         )}
-        Export Report
+        {downloadingFormat ? "Exporting…" : "Export"}
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-1 w-36 rounded-md border border-border bg-popover p-1 shadow-md">
-          <button
-            type="button"
-            onClick={() => handleExport("markdown")}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-popover-foreground transition-colors duration-150 hover:bg-accent"
-          >
-            <FileCode className="size-3.5 text-blue-500" />
-            Markdown (.md)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExport("pdf")}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-popover-foreground transition-colors duration-150 hover:bg-accent"
-          >
-            <FileText className="size-3.5 text-red-500" />
-            PDF (.pdf)
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExport("txt")}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-popover-foreground transition-colors duration-150 hover:bg-accent"
-          >
-            <FileType className="size-3.5 text-slate-500" />
-            Plain Text (.txt)
-          </button>
+        <div
+          role="menu"
+          aria-label="Export format"
+          className="absolute right-0 z-50 mt-1 w-40 rounded-md border border-border bg-popover p-1 shadow-md"
+        >
+          {FORMATS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              role="menuitem"
+              onClick={() => handleExport(f)}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-popover-foreground transition-colors duration-150 hover:bg-accent focus-visible:bg-accent"
+            >
+              <f.icon className="size-3.5 text-muted-foreground" aria-hidden />
+              {f.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

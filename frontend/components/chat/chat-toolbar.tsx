@@ -9,6 +9,8 @@
 import { ChevronDown, Eraser, FileText, Files, Layers, MemoryStick, MessageSquare, Telescope, Zap } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
+import { useDismissable } from "@/hooks/useDismissable";
+
 import { useScopeLabel } from "@/components/insights/scope-picker";
 import { useChat } from "@/hooks/useChat";
 import { useDocuments } from "@/hooks/useDocuments";
@@ -31,6 +33,9 @@ export function ChatToolbar() {
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeDropdown = useCallback(() => setDropdownOpen(false), []);
+  useDismissable(dropdownRef, dropdownOpen, closeDropdown, triggerRef);
 
   // Count bounded memory turns for display (user + assistant only)
   const memoryTurns = Math.min(
@@ -64,13 +69,15 @@ export function ChatToolbar() {
     : "All Documents";
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-1 pb-2">
+    <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-2 px-1 pb-2">
       {/* Left side: Mode toggle + doc selector */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Research / Chat mode toggle */}
-        <div className="flex rounded-sm border border-border bg-secondary p-0.5 text-xs">
+        <div role="radiogroup" aria-label="Answer mode" className="flex rounded-sm border border-border bg-secondary p-0.5 text-xs">
           <button
             type="button"
+            role="radio"
+            aria-checked={!isResearchMode}
             id="chat-mode-btn"
             onClick={() => setIsResearchMode(false)}
             title="Chat mode: ask questions about a single document or all documents"
@@ -85,6 +92,8 @@ export function ChatToolbar() {
           </button>
           <button
             type="button"
+            role="radio"
+            aria-checked={isResearchMode}
             id="research-mode-btn"
             onClick={() => setIsResearchMode(true)}
             title="Research mode: synthesize across the documents in the active collection"
@@ -103,6 +112,7 @@ export function ChatToolbar() {
         {!isResearchMode && (
           <div className="relative" ref={dropdownRef}>
             <button
+              ref={triggerRef}
               type="button"
               id="doc-selector-btn"
               aria-haspopup="listbox"
@@ -126,7 +136,7 @@ export function ChatToolbar() {
               <div
                 role="listbox"
                 aria-label="Select document scope"
-                className="absolute bottom-full mb-1 left-0 z-50 min-w-[180px] max-w-[260px] overflow-hidden rounded-md border border-border bg-background shadow-lg"
+                className="absolute left-0 top-full z-50 mt-1 max-h-72 min-w-[180px] max-w-[260px] overflow-y-auto rounded-md border border-border bg-background shadow-lg"
               >
                 <button
                   role="option"
@@ -222,7 +232,8 @@ export function ChatToolbar() {
           type="button"
           id="clear-conversation-btn"
           onClick={confirmClear}
-          className="flex items-center gap-1.5 rounded-sm border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+          disabled={messages.length === 0}
+          className="flex items-center gap-1.5 rounded-sm border border-border bg-secondary px-2 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Eraser className="size-3.5" aria-hidden />
           Clear

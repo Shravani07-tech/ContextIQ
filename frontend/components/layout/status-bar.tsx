@@ -22,6 +22,9 @@ export function StatusBar() {
     <footer className="flex h-8 shrink-0 items-center justify-between border-t border-border bg-background px-4 font-mono text-xs text-muted-foreground">
       <div className="flex items-center gap-4">
         <span>ContextIQ v{APP_VERSION}</span>
+        <span className="hidden sm:inline" title="Answers, summaries and analysis run on your local Ollama model. Voice input, if enabled, uses your browser's speech service.">
+          local processing
+        </span>
       </div>
       <span className="flex items-center gap-1.5">
         <span className={`size-1.5 rounded-full ${state.dot}`} aria-hidden />

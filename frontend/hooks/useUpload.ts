@@ -12,7 +12,7 @@
 // way to refresh it.
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useActiveCollection } from "@/hooks/useCollections";

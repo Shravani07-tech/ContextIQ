@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import type { Collection, CollectionCreate, CollectionUpdate } from "@/lib/types";
+import type { CollectionCreate, CollectionUpdate } from "@/lib/types";
 
 // Module-level global state for active collection selection across UI components
 let globalActiveCollectionId: string | null = null;
@@ -60,7 +60,7 @@ export function useUpdateCollection() {
 
 export function useDeleteCollection() {
   const qc = useQueryClient();
-  const [_, setActiveId] = useActiveCollection();
+  const [, setActiveId] = useActiveCollection();
 
   return useMutation({
     mutationFn: (id: string) => api.deleteCollection(id),

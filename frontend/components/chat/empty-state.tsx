@@ -29,8 +29,8 @@ const QUICK_ACTIONS = [
   },
   {
     icon: GitCompareArrows,
-    title: "Compare Documents",
-    description: "Spot differences between two sources",
+    title: "Compare Themes",
+    description: "Ask how your sources agree or differ",
     prompt: "Compare the main themes across my documents.",
   },
   {
@@ -60,7 +60,12 @@ export function EmptyState() {
       </p>
       <p className="max-w-md text-[13px] leading-relaxed text-muted-foreground/70">
         Ask questions about your own documents and get grounded answers
-        with sources — everything stays on your machine.
+        with sources, evidence ratings and conflict checks — processed by
+        local models on your machine.
+      </p>
+      <p className="max-w-md text-xs leading-relaxed text-muted-foreground/70">
+        Switch to <span className="font-medium text-foreground/80">Research</span> above for
+        cross-document synthesis, or use Compare, Timeline, Check claim and Graph in the top bar.
       </p>
 
       {/* Quick actions — 2×2 on small screens and up, stacked on phones. */}
