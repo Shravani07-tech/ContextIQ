@@ -143,7 +143,10 @@ class GraphServiceTests(unittest.TestCase):
                   "relations": [{"source": "Hank Scorpio", "target": "Globex Corporation", "relation": "runs",
                                  "evidence_id": "E1", "quote": "Hank Scorpio runs Globex Corporation"}]}
         svc = GraphService(llm=self._llm({"Jane Doe founded": self.ACME, "Hank Scorpio": globex}))
-        svc.build()  # whole knowledge base
+        # Whole knowledge base, in bounded batches until nothing remains.
+        for _ in range(20):
+            if svc.build()["remaining"] == 0:
+                break
 
         graph_a = svc.get_graph(collection_id=self.coll_a["id"])
         names_a = {n["name"] for n in graph_a["nodes"]}

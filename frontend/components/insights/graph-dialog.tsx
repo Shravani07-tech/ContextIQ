@@ -256,8 +256,9 @@ export function GraphDialog({ trigger }: { trigger?: React.ReactElement }) {
     try {
       let remaining = 0;
       let failed = 0;
-      // The backend processes a bounded batch per call; keep going until
-      // the scope is done (or nothing is progressing).
+      // The backend processes a small batch (3 documents by default) per
+      // call so no single request runs for long; keep going until the
+      // scope is done (or nothing is progressing).
       for (let round = 0; round < 10; round++) {
         const res = await api.buildGraph({ ...scope, force: force && round === 0 });
         failed += res.processed.filter((p) => p.status === "failed").length;

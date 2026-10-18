@@ -247,7 +247,7 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       },
-      120_000,
+      300_000, // CPU generation of the structured comparison can exceed 2 min
     ),
 
 
@@ -260,7 +260,9 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       },
-      150_000,
+      // Two sequential model calls (citation check + contradiction scan),
+      // each up to the server's 120s default on CPU.
+      330_000,
     ),
 
   /** POST /graph/build — extract the knowledge graph for documents in scope. */
@@ -292,7 +294,7 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       },
-      180_000,
+      300_000, // above the server's 240s extraction timeout
     ),
 
   /** PATCH /documents/{filename} — assign or move document to a collection. */

@@ -12,5 +12,8 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     globals: true,
     css: false,
+    // Dialog tests drive several user-event interactions each; the 5s
+    // default flaked when the machine (or a CI runner) was under load.
+    testTimeout: 15_000,
   },
 });
