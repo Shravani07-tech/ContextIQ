@@ -9,7 +9,7 @@ name: CI
 
 on:
   push:
-    branches: [main, react-migration]
+    branches: [main, react-migration, feature/contextiq-2.0]
   pull_request:
     branches: [main]
 
@@ -48,3 +48,5 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python -m unittest tests.test_unit -v
+      # 2.0 analysis features: fully mocked (no Ollama, no model download)
+      - run: python -m unittest tests.test_timeline tests.test_evidence tests.test_graph tests.test_agentic_research -v

@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 OPENAPI_TAGS = [
     {"name": "collections", "description": "Workspace collections management."},
     {"name": "chat", "description": "Grounded question answering with source citations."},
-    {"name": "research", "description": "Multi-document synthesis across all indexed documents."},
+    {"name": "research", "description": "Quick synthesis, bounded deep research, and report export."},
     {"name": "analysis", "description": "Timeline extraction, evidence assessment, and the knowledge graph."},
     {"name": "documents", "description": "Upload, index, and list knowledge-base documents."},
     {"name": "system", "description": "Health, status, and database administration."},
@@ -79,11 +79,13 @@ app = FastAPI(
     title="ContextIQ API",
     description=(
         "Private AI-Powered Document Intelligence — REST API.\n\n"
-        "Upload PDF/TXT documents, index them into a local vector "
-        "database, and ask questions answered strictly from their "
-        "content, with per-answer source citations."
+        "Index PDF, Office, spreadsheet, Markdown and HTML documents into "
+        "a local vector database; ask grounded questions with citation "
+        "checks, contradiction detection and evidence ratings; and run "
+        "timelines, a knowledge graph and bounded research, all with a "
+        "local Ollama model."
     ),
-    version="1.0.0",
+    version="2.0.0-dev",
     openapi_tags=OPENAPI_TAGS,
     lifespan=lifespan,
 )

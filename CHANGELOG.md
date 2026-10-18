@@ -4,6 +4,28 @@ All notable changes to ContextIQ are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — ContextIQ 2.0 (`feature/contextiq-2.0`)
+
+### Added
+- Multi-format ingestion (PDF, TXT, DOCX, PPTX, XLSX, CSV, Markdown, HTML), local OCR fallback, page/slide/sheet/section locators.
+- Collections, tags, collection-scoped retrieval, automatic summaries, suggested follow-up questions.
+- Document comparison (2–5 documents) with per-document evidence coverage.
+- Citation verification, contradiction detection, and exportable research reports (Markdown/PDF/TXT).
+- Timeline extraction (`POST /timeline`) with deterministic date normalization and explicit certainty.
+- Rule-based evidence assessment on chat answers and `POST /evidence/assess` claim checks.
+- Evidence-linked knowledge graph in SQLite (`/graph`, `/graph/build`, `/graph/entities/{id}`).
+- Bounded deep research (`/research/agent`, `/research/agent/stream`) with progress streaming and cancellation.
+- Browser-native voice input (disclosed, opt-in) and read-aloud.
+- Workspace tools bar, Quick/Deep research toggle, analysis dialogs.
+
+### Fixed
+- Feature services passed `timeout=` to an `LLM` that did not accept it.
+- Unscoped comparisons called a non-existent `MetadataStore.get_document_meta`.
+- Citation verification attributed uncited claims to every retrieved chunk.
+- Report export echoed exception text to clients.
+- Tests wrote fixture rows into the developer's real `data/metadata.db`.
+- Streaming chat sources dropped slide/sheet locators.
+
 ## [1.0.0] — 2026-07-28
 
 First production release. ContextIQ is now a FastAPI backend serving a

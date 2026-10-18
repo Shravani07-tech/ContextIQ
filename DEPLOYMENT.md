@@ -1,4 +1,4 @@
-# ContextIQ — Deployment Guide (v1.0)
+# ContextIQ — Deployment Guide (v1.0, updated for 2.0)
 
 Production-quality **local** deployment with Docker Compose.
 
@@ -143,11 +143,24 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000
 
 ## 7. Verify the deployment
 
-1. Open http://localhost:3000 and upload a PDF/TXT in the sidebar — it
+1. Open http://localhost:3000 and upload a supported document (PDF,
+   TXT, DOCX, PPTX, XLSX, CSV, Markdown, HTML) in the sidebar — it
    indexes automatically.
 2. Ask a question; the answer should stream in with source citations.
 3. Confirm persistence: `docker compose restart backend`, then reload —
    your documents and answers-corpus are still there (volumes).
+
+### Notes for 2.0 features
+
+- **OCR is not available in the backend image**: it does not install
+  Tesseract or Poppler, so scanned PDFs without a text layer yield no
+  text in Docker. Install `tesseract-ocr` and `poppler-utils` in a derived
+  image if you need OCR.
+- The knowledge graph, timelines and evidence data live in the same
+  SQLite file as collections (`metadata.db` in the data volume), so they
+  persist across restarts with the existing volumes.
+- Model-call timeouts default to CPU-sized values (see `.env.example`);
+  deep research is capped at 600 s per run.
 
 ## 8. Common operations
 

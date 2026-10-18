@@ -4,69 +4,51 @@
 
 ---
 
-## v1.0 — Released ✅ *(current)*
+## v1.0 — Released ✅
 
-Local, private RAG application: a FastAPI backend and a Next.js/React
-frontend, everything running on your own machine.
+Local, private RAG: FastAPI backend, Next.js 15 / React 19 frontend,
+PDF/TXT ingestion, BGE embeddings in Chroma, grounded streaming answers
+from a local Ollama model with source citations, Docker Compose, CI.
 
-- FastAPI REST layer over a framework-agnostic Python RAG core
-- Next.js 15 + React 19 + TypeScript frontend (Tailwind, shadcn/Base UI,
-  Framer Motion with reduced-motion support)
-- PDF/TXT ingestion with chunking (1000/200 overlap) and BGE embeddings
-- Persistent Chroma vector store (embedded) with cosine similarity
-- Semantic retrieval (top-5) with BGE query-prefix optimization
-- Grounded answer generation via local Ollama (llama3.2) — answers only
-  from your documents, with an honest "I don't know" fallback
-- Token-by-token answer **streaming** (SSE) with stop, regenerate, and
-  copy; rich Markdown + syntax highlighting
-- Source citations per answer: filename, chunk number, similarity score,
-  copyable preview snippet
-- Document library and knowledge-base management; live health/status
-- **Docker Compose** deployment and GitHub Actions **CI**
-- Automated tests: mocked backend unit suite, backend API e2e, and
-  frontend component/hook tests
+## v2.0 — Document Intelligence Workspace *(implemented on `feature/contextiq-2.0`, unreleased)*
 
-## v1.1 — Polish & Quality *(next)*
+| Phase | Scope | Status |
+|---|---|---|
+| A | Multi-format ingestion (PDF, TXT, DOCX, PPTX, XLSX, CSV, MD, HTML), OCR fallback, source locators | Done |
+| B | Collections, tags, collection-scoped retrieval, document library | Done |
+| C1 | Automatic summaries and key points | Done |
+| C2 | Suggested follow-up questions | Done |
+| C3 | Document comparison (2–5 documents) | Done |
+| C4 | Citation verification | Done |
+| C5 | Contradiction detection | Done |
+| C6 | Research report export (Markdown / PDF / TXT) | Done |
+| C7 | Timeline extraction with explicit date certainty | Done |
+| C8 | Rule-based evidence and confidence assessment | Done |
+| C9 | Workspace UI, navigation and accessibility polish | Done |
+| C10 | Evidence-linked knowledge graph (SQLite) | Done |
+| C11 | Bounded deep research with progress streaming | Done |
+| C12 | Browser-native voice input and read-aloud | Done |
 
-- Runtime-configurable settings from the UI (LLM/embedding model,
-  chunk size, top-K), with a guided re-index flow
-- Server-persisted per-document metadata (size, upload time, chunk count)
-- Broader automated coverage: component tests for the upload and sidebar
-  flows, plus a containerized-Ollama job so the e2e suite runs in CI
-- Multi-format ingestion (DOCX, Markdown, HTML)
-- Product branding: favicon and README screenshots/GIFs
+Before release: owner hands-on testing, then merge to `main` and tag.
 
-## v2.0 — Authentication
+## Next — Quality and performance
 
-- User accounts (email + OAuth sign-in)
-- Session management with secure token handling
-- Per-user API rate limiting
-- Private-by-default document access
+- Sentence-level date and relation validation (currently per passage).
+- Faster structured extraction on CPU (smaller prompts, batching) and
+  background jobs for graph building on large collections.
+- Optional fully local speech-to-text (e.g. a Whisper model) so voice
+  input never depends on a browser vendor's service.
+- Containerized-Ollama CI job so the live end-to-end suite runs in CI.
+- Evaluation set for citation verification and contradiction accuracy.
 
-## v2.5 — Cloud Deployment
+## Later — directional
 
-- Cloud infrastructure-as-code building on the existing Docker images
-- Managed vector database and object storage for documents
-- Hosted LLM option alongside local Ollama
-- CI/CD pipeline: automated deploys on top of the current CI
-- Monitoring, structured logging, and error tracking
-
-## v3.0 — Multi-User
-
-- Isolated per-user knowledge bases
-- Team workspaces with role-based access (owner / editor / viewer)
-- Shared document collections and conversation history
-- Usage analytics and admin dashboard
-
-## v4.0 — AI Workspace
-
-- Multi-document projects with folders and tags
-- Follow-up context and conversation memory (building on v1.0 streaming)
-- Document summarization, comparison, and export (PDF/Markdown)
-- Integrations: Google Drive, Notion, Slack ingestion
-- Agentic workflows: scheduled re-indexing, watched folders, digest reports
+- Authentication and per-user knowledge bases (the API is single-user and
+  unauthenticated today).
+- Watched folders and scheduled re-indexing.
+- Optional connectors (Drive, Notion) — only as explicit, user-enabled
+  integrations, never by default.
 
 ---
 
-*Versions beyond v1.1 are directional and may be re-scoped as the
-product evolves.*
+*Items beyond v2.0 are directional and may be re-scoped.*

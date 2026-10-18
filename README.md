@@ -2,204 +2,191 @@
 
 **Private AI-Powered Document Intelligence**
 
-A local, private Retrieval-Augmented Generation (RAG) application:
-upload your own PDF/TXT documents and ask questions about them in a
-chat UI. Answers are generated **only** from your documents — with
-source citations, streamed token by token — and everything runs on
-your machine (no cloud APIs, no data leaves your computer).
+ContextIQ is a privacy-first knowledge workspace for your own documents.
+Import PDFs, Office files, spreadsheets, Markdown and HTML; ask grounded
+questions; inspect the evidence behind every answer; compare documents;
+find contradictions; build timelines and an evidence-linked knowledge
+graph; run bounded multi-step research; and export reports. Answers and
+analysis are produced by a **local** Ollama model — your documents are
+never sent to a hosted AI service.
 
-![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20Ollama-blue)
+![Stack](https://img.shields.io/badge/stack-FastAPI%20·%20Next.js%20·%20Chroma%20·%20SQLite%20·%20Ollama-blue)
 
-## Features (ContextIQ 2.0 — Phase C6: Exportable Research Reports)
+> Branch status: `feature/contextiq-2.0` (unreleased). `main` holds the v1.0.0 release.
 
-- **Exportable Research Reports**: Export Research Mode results into professional, self-contained **Markdown (`.md`)**, **PDF (`.pdf`)**, or **Plain Text (`.txt`)** research reports with a single click.
-- **Deterministic & Attribution-Preserving Export**: Report generation is deterministic and preserves source attribution, active collection scope, document metadata, citation verification statuses (`SUPPORTED`, `UNVERIFIED`), and detected contradictions (`CONTRADICTION`, `POTENTIAL_CONTRADICTION`) without triggering extra LLM calls.
-- **False-Positive Safeguards**: Explicitly guards against false positives by differentiating real contradictions from differing reporting dates, currency units, geographic regions, or forecast vs. actual metrics.
-- **Strict Scope Isolation**: Contradiction analysis uses only evidence from the active query scope, preserving collection and document security boundaries.
-- **Interactive Contradiction UI**: Displays structured contradiction cards detailing conflicting claims side-by-side with source attribution (`Source A` vs `Source B`), severity levels (`HIGH`, `MEDIUM`, `LOW`), and concise explanatory reasons.
-- **Citation Verification Engine**: Evaluates generated factual claims against cited document evidence, classifying each claim into `SUPPORTED`, `PARTIALLY_SUPPORTED`, `UNSUPPORTED`, or `UNVERIFIABLE`.
-- **Non-Blocking Failure Isolation**: Contradiction detection or LLM timeouts fall back gracefully to `contradictions = []` without affecting or delaying the primary Chat answer.
-- **Interactive Verification UI**: Source cards display color-coded status badges (`✓ Supported`, `⚠ Partially supported`, `✕ Unsupported`, `? Unverifiable`) with expandable claim breakdowns and explanations.
-- **Suggested Follow-up Questions**: Generates 3-5 grounded, natural follow-up questions tailored to the active conversation and document scope.
-- **Automatic Document Summarization**: Automatically generates grounded overviews and key points for indexed documents using local Ollama LLM infrastructure.
-- **Persistent Local Summaries**: Summaries persist locally in SQLite metadata store across application restarts and document movement.
-- **Persistent Collections & Workspaces**: Organize documents into custom, persistent logical collections with strict scope isolation.
-- **Document Tags & Metadata Management**: Apply normalized, searchable tags (`#research`, `#finance`) and inspect detailed document metadata (file size, file type, page/slide/sheet count, chunk count, extraction method).
-- **Collection-Aware Retrieval**: Scope vector and BM25 candidate retrieval to active collections or tags before reranking and LLM context construction, enforcing strict cross-collection data isolation.
-- **Collection-Aware Chat & Research Mode**: Seamlessly switch between global document search and scoped collection chat/research without re-embedding or modifying ChromaDB vectors.
-- **Unified Document Library UI**: Interactive workspace UI featuring collection creation/management, active scope selectors (`🌐 All Documents` vs `📁 Collection`), tag filtering pills, type filters, and document movement dropdowns.
-- **Multi-Format Ingestion Engine**: Supports 8 file format categories: `.pdf`, `.txt`, `.docx` (Word), `.pptx` (PowerPoint), `.xlsx` (Excel), `.csv`, `.md`/`.markdown`, and `.html`/`.htm`.
-- **Local OCR Fallback**: Page-aware local OCR processing using Tesseract & Poppler for scanned or image-based PDFs when text extraction finds no readable text.
-- **Rich Citation Metadata**: Preserves document structure with 1-based page numbers (`PDF`), slide numbers (`PPTX`), worksheet names (`XLSX`), and section headings (`DOCX`, `Markdown`, `HTML`) displayed in source citation cards.
-- **Hybrid Retrieval**: Combines semantic vector retrieval (ChromaDB) with lexical keyword matching (BM25 via `rank-bm25`) fused via Reciprocal Rank Fusion (RRF, $k=60$) for higher retrieval accuracy.
-- **Cross-Encoder Reranking**: Candidate passages are reranked using a lightweight local `cross-encoder/ms-marco-MiniLM-L-2-v2` neural model.
-- **Multi-Document Research Mode**: Synthesizes structured markdown summaries across indexed documents using a single LLM call.
+## Features
 
+### Documents and collections
+- **Multi-format ingestion** — `.pdf`, `.txt`, `.docx`, `.pptx`, `.xlsx`, `.csv`, `.md`/`.markdown`, `.html`/`.htm`.
+- **Local OCR fallback** for scanned PDFs (Tesseract + Poppler, optional).
+- **Source locators** — page (PDF), slide (PPTX), sheet (XLSX) and section heading (DOCX/Markdown/HTML) are kept with every chunk and shown wherever a passage is cited.
+- **Collections and tags** in SQLite; moving or deleting a collection never deletes documents.
+- **Automatic summaries** with key points, generated after indexing and stored locally.
 
-## How it works
+### Grounded chat and research
+- **Hybrid retrieval** — vector search (Chroma, `BAAI/bge-small-en-v1.5`, 384-dim) + BM25, fused with Reciprocal Rank Fusion and reranked by a local cross-encoder (with fallback).
+- **Streaming answers** over Server-Sent Events, grounded only in the retrieved passages, with suggested follow-up questions.
+- **Citation verification** — each claim is checked as `SUPPORTED`, `PARTIALLY_SUPPORTED`, `UNSUPPORTED` or `UNVERIFIABLE` (model-assisted, not proof).
+- **Contradiction detection** — `CONTRADICTION` / `POTENTIAL_CONTRADICTION` with severity, guarding against false positives from differing dates, units, regions, or forecasts vs. actuals.
+- **Evidence assessment** (rule-based, see below) attached to every verified answer.
+- **Research mode** — *Quick* one-pass synthesis, or *Deep* bounded multi-step research (see below).
+- **Document comparison** of 2–5 documents with per-document evidence coverage.
+- **Report export** — Markdown, PDF (ReportLab) or plain text, including sources, citation checks, contradictions, evidence ratings, research process, unresolved questions and timelines.
 
-```
-                 INGESTION                            QUERY
-data/*.pdf|txt ──► load ──► chunk ──► embed ──► Chroma DB
-                                                    ▲
-user question ──► embed query ──► Vector Top-8 ─────┼──► RRF Fusion ──► Rerank ──► Top-4 ──► Ollama (llama3.2)
-              ──► tokenize query ──► BM25 Top-8 ────┘
-```
+### Analysis tools (top bar)
+- **Timeline** — events with original date wording, normalized dates, explicit certainty, actors and source locators.
+- **Check claim** — rate how well the documents in scope support any statement.
+- **Knowledge graph** — entities and relationships, each linked to the passage that states it.
+- **Compare** — side-by-side comparison of selected documents.
 
-- Documents are split into 1000-character chunks (200 overlap) and
-  embedded with `BAAI/bge-small-en-v1.5` (384-dim vectors).
-- Vectors persist in a local Chroma database (cosine similarity).
-- BM25 indices are cached at the class level and invalidated automatically on document upload/deletion.
-- Candidate chunks are fetched independently up to `TOP_K * 2` from both paths and merged.
-- Cross-encoder scores the candidates and selects the top `TOP_K` (default 4).
-- Answers come from a local Ollama model, instructed to answer only
-  from the retrieved context and to say "I don't know" otherwise.
-- The answer streams over Server-Sent Events, so tokens appear as the
-  model produces them.
+Every tool respects the active collection (sidebar) and, optionally, a narrower selection of documents inside it.
+
+### Voice
+- **Voice input** via the browser's Web Speech API. The transcript is placed in the message box for review — never auto-sent.
+- **Read aloud** for answers via the browser's speech synthesis.
+
+## How the 2.0 features work — and their limits
+
+### Timeline extraction
+Passages are selected by date density (or by a focus query), then one bounded LLM call labels events against evidence ids. Every event is validated: the cited passage must exist, the quoted date wording must occur in it, and actors must appear in it. Dates are normalized **in code** (`date_normalizer.py`), never taken from the model:
+
+| Certainty | Meaning |
+|---|---|
+| `EXACT` | The wording pins the date at its precision (day, month, quarter, year, range) |
+| `APPROXIMATE` | "circa 1850", "mid-2019", "the 1990s", "by 2025" |
+| `AMBIGUOUS` | "03/04/2024" — day/month order unknown, only the year is used |
+| `RELATIVE` | "last year" — not placed on the timeline |
+| `UNKNOWN` | no usable date — listed separately, never guessed |
+
+Publication/revision dates are tagged separately from event dates, and the date a file was indexed is reported as ingestion metadata, not as an event. Without Ollama, a pattern-based extractor runs and the response says so.
+*Limit:* validation is per passage, so a date that occurs elsewhere in the same passage can be attached to the wrong event; check the linked passage.
+
+### Evidence assessment
+A deterministic, documented rule set (`evidence_service.py`) — no extra LLM call. Ratings are categorical on purpose; there are **no percentages**, because these are **not calibrated probabilities**:
+
+| Rating | Rule |
+|---|---|
+| `STRONG` | Citation check SUPPORTED, ≥ 2 independent sources, no related conflict |
+| `MODERATE` | Citation check SUPPORTED with 1 independent source |
+| `LIMITED` | Partially supported; keyword overlap only (model unavailable); or a SUPPORTED verdict whose passage can't be located |
+| `CONTESTED` | A detected contradiction concerns the claim — overrides support |
+| `UNSUPPORTED` | The citation check found no support — never upgraded |
+| `INSUFFICIENT` | Undecidable, or no relevant passage retrieved |
+
+Only passages cited by the check or containing most (≥ 60%) of the claim's key terms count as corroboration. Passages from the same document count once, and near-duplicate text across documents (5-word shingle Jaccard ≥ 0.6) is collapsed into one source.
+
+### Knowledge graph
+Stored in the existing SQLite database (no graph database). Entities merge only on an exact match of type and conservatively normalized name; near matches ("Acme" / "Acme Corp", acronyms) are reported as *possible duplicates* and never merged. A relationship is stored only if both entities occur in the cited passage; it is `SUPPORTED` only when the model's quote is found verbatim, otherwise `UNCERTAIN` (dashed in the UI). Without Ollama, entities are capitalized names and links are `UNCERTAIN` "mentioned with" co-mentions. Graph facts are removed when a document is deleted, re-indexed, or the database is cleared. Queries only return facts from documents in scope; an entity that exists only elsewhere is a 404.
+
+### Bounded deep research
+A deterministic orchestrator (`agentic_research.py`), not an open-ended agent: plan (≤ 4 sub-questions; simple questions are not split) → one scoped search per sub-question → follow-up searches for gaps (≤ 2, never repeating a search) → one cited synthesis over numbered passages (citations to non-existent passages are removed) → citation check, contradiction scan, evidence assessment. Hard limits: 8 searches, 9,000 context characters, 900 answer tokens, 600 s wall clock (all configurable). Scope is re-checked on every search. After the first model failure no further model calls are made and the run ends `PARTIAL` with the evidence found. The Stop button cancels the run server-side. Sub-question statuses describe *evidence* ("Evidence found" / "Weak evidence" / "No evidence"), not whether the answer resolved them.
+
+### Voice and privacy
+Voice input uses the browser's speech recognition. **Some browsers (e.g. Chrome, Edge) send audio to the browser vendor's speech service** — outside ContextIQ's local processing — so first use shows this disclosure and requires opt-in, and the microphone is only requested when you press the mic button. ContextIQ never records or stores audio and never sends documents anywhere. Where speech recognition is unsupported (e.g. Firefox), the control is hidden and typing is the fallback.
 
 ## Architecture
 
-ContextIQ is a **FastAPI backend** serving a **Next.js (React 19)
-frontend**. The RAG core is framework-agnostic Python that the API
-layer wraps but never rewrites.
-
 ```
-├── api/                # FastAPI application
-│   ├── main.py         #   app assembly: CORS, logging, exception handlers, lifespan warm-up
-│   ├── deps.py         #   dependency-injected singletons (RagService, DocumentService)
-│   ├── routers/        #   chat.py · documents.py · system.py (thin HTTP layer)
-│   ├── services/       #   rag_service.py · document_service.py (own the expensive objects)
-│   └── schemas/        #   Pydantic request/response models
-├── rag.py              # Retriever + grounded answer generation (sync + streaming)
-├── llm.py              # Ollama client (chat + streaming chat)
-├── vector_store.py     # All Chroma database code
-├── embedding_model.py  # Process-wide embedding-model singleton
-├── ingest.py           # Pipeline: load → chunk → embed → store
-├── config.py           # Every path, model name, and tunable setting (env-driven)
-├── frontend/           # Next.js App Router UI (see frontend/ below)
-├── tests/              # test_unit.py (mocked, CI) · test_api.py (live e2e)
-├── requirements.txt    # Pinned Python dependencies
-├── data/               # Your source documents (demo corpus included)
-└── chroma_db/          # Persistent vector database (generated)
-```
-
-```
-frontend/
-├── app/                # App Router entry, error boundaries, global styles
-├── components/         # chat/ · sidebar/ · layout/ · shared/ · ui/
-├── hooks/              # TanStack Query hooks (one per backend concern)
-└── lib/                # api.ts (typed client + SSE) · types · utils · helpers
+├── api/
+│   ├── main.py            app assembly: CORS, logging, size limit, exception handlers
+│   ├── routers/           chat · research · agent_research · compare · timeline · evidence ·
+│   │                      graph · documents · collections · system
+│   ├── services/          rag_service (shared retriever + LLM) · document_service
+│   └── schemas/           models.py (core contract) · insights.py (2.0 analysis features)
+├── rag.py                 grounded answers (sync + streaming) + verification pipeline
+├── retrieval.py           hybrid retriever (vector + BM25 → RRF → rerank), scope filters
+├── scope.py               single validated rule for collection / document scope
+├── timeline_service.py    C7 timeline · date_normalizer.py
+├── evidence_service.py    C8 evidence assessment + claim check
+├── graph_service.py       C10 knowledge graph (SQLite)
+├── agentic_research.py    C11 bounded research orchestrator
+├── citation_verification_service.py · contradiction_detection_service.py ·
+│   comparison_service.py · summary_service.py · suggested_question_service.py ·
+│   report_service.py
+├── llm.py                 Ollama client (per-call timeout and output cap)
+├── metadata_store.py      SQLite (WAL, foreign keys): collections, tags, summaries, graph
+├── ingest.py · parsers.py · ocr_service.py · vector_store.py · embedding_model.py
+└── frontend/              Next.js 15 · React 19 · Tailwind · TanStack Query
+    ├── components/        chat/ · insights/ (analysis dialogs) · sidebar/ · layout/ · ui/
+    ├── hooks/             useChat (chat, quick + deep research) · useSpeechRecognition · …
+    └── lib/               api.ts (typed client, shared SSE reader) · types.ts · graph-layout.ts
 ```
 
-Each module has one job and they only depend downward
-(routers → services → rag → vector_store/llm; ingest → vector_store),
-so any layer can be tested or swapped independently.
+## API overview
+
+Interactive docs at `http://localhost:8000/docs` once the backend runs.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /upload`, `POST /index`, `GET/DELETE /documents…` | ingestion and document management |
+| `GET/POST/PATCH/DELETE /collections…`, `/documents/{f}/tags` | collections and tags |
+| `POST /chat`, `POST /chat/stream` | grounded Q&A (+ verification, contradictions, evidence) |
+| `POST /research`, `POST /research/stream` | quick one-pass research synthesis |
+| `POST /research/agent`, `POST /research/agent/stream` | bounded deep research (SSE: progress, plan, sources, token, result) |
+| `POST /research/export` | Markdown / PDF / TXT report |
+| `POST /compare` | 2–5 document comparison with coverage |
+| `POST /timeline` | timeline extraction |
+| `POST /evidence/assess` | claim check |
+| `POST /graph/build`, `GET /graph`, `GET /graph/entities/{id}` | knowledge graph |
+| `GET /health`, `GET /status`, `DELETE /database` | system |
+
+Scoped endpoints accept `collection_id` and/or `filenames` (≤ 25). Unknown collections or documents return `400`; documents outside the collection return `403`.
 
 ## Prerequisites
 
-- **Python 3.11+**
-- **Node.js 20+**
-- **[Ollama](https://ollama.com)** installed and running
+- **Python 3.11+**, **Node.js 20+**
+- **[Ollama](https://ollama.com)** running locally with `llama3.2` (`ollama pull llama3.2`)
+- Optional OCR: Tesseract and Poppler on `PATH`
 
-## Quick start (dev)
-
-One command from the project root starts the FastAPI backend (:8000)
-and the Next.js frontend (:3000), cleaning stale dev processes off
-both ports first so requests never silently break:
-
-```powershell
-.\run-dev.ps1          # Windows        (.\run-dev.ps1 -Stop to stop)
-./run-dev.sh           # Linux / macOS  (./run-dev.sh stop to stop)
-```
-
-VS Code users: **Run Task → Dev: Full Stack**, or debug both sides at
-once with the **Full Stack: ContextIQ** launch compound.
-
-## Setup (from scratch)
+## Setup
 
 ```bash
-# 1. Backend dependencies
 pip install -r requirements.txt
-
-# 2. Frontend dependencies
 cd frontend && npm install && cd ..
-
-# 3. Pull the local LLM (once)
 ollama pull llama3.2
-
-# 4. (Optional) pre-ingest documents — drop PDFs/TXTs into data/ first,
-#    or upload them later through the UI.
-python ingest.py
-
-# 5. Launch both servers
-./run-dev.sh           # or .\run-dev.ps1 on Windows
+./run-dev.sh            # or .\run-dev.ps1 on Windows — backend :8000, frontend :3000
 ```
 
-The first ingestion downloads the embedding model (~130 MB) from
-Hugging Face; afterwards everything runs offline.
-
-## Usage
-
-1. Upload PDF/TXT files in the sidebar — they're indexed automatically.
-2. Ask questions in the chat; the answer streams in with a **Stop**
-   button, and you can **copy** or **regenerate** any answer.
-3. Expand **Sources** under any answer to see exactly which document
-   chunks it was based on, with similarity scores and copyable
-   previews.
-4. **Manage documents** opens a searchable library with per-file
-   delete; **Model details** shows the live pipeline configuration.
-
-If the answer isn't in your documents, the bot says
-*"I don't know based on the provided documents."* rather than guessing.
+The first run downloads the embedding and reranker models from Hugging Face; afterwards everything runs offline. Docker: see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Configuration
 
-Every knob is environment-driven (see [config.py](config.py) and
-[.env.example](.env.example)): data/Chroma directories, collection
-name, chunk size/overlap, embedding model, `TOP_K` retrieval depth,
-Ollama model and URL, upload size limit, and allowed CORS origins.
-The frontend reads `NEXT_PUBLIC_API_URL` (defaults to
-`http://localhost:8000`).
+All settings are environment variables read by [config.py](config.py) (see [.env.example](.env.example)): data and Chroma directories, chunking, embedding model, `TOP_K`, Ollama model/URL, upload limit, CORS origins, and per-feature limits and timeouts (`CONTEXTIQ_TIMELINE_*`, `CONTEXTIQ_GRAPH_*`, `CONTEXTIQ_AGENT_*`, `CONTEXTIQ_*_TIMEOUT`). The frontend reads `NEXT_PUBLIC_API_URL`.
+
+**Performance is hardware-dependent.** Defaults are sized for CPU-only inference: on the development machine (CPU, `llama3.2`) a chat answer with all checks took about 4 minutes, a timeline about 1.5 minutes, a claim check about 3.5 minutes, and a deep-research run about 4.5 minutes for a two-document collection. A GPU is much faster; lower the timeouts there. When a model call times out, features degrade (pattern fallbacks, heuristic ratings, partial research) and say so.
 
 ## Testing
 
-**Frontend** — Vitest + React Testing Library (no backend required):
-
 ```bash
-cd frontend
-npm run lint
-npm test
-npm run build
+# Backend — mocked, no Ollama needed; runs against a throwaway data dir
+pip install pytest   # test runner (not a runtime dependency)
+python -m pytest tests --ignore=tests/test_api.py
+python -m unittest tests.test_unit tests.test_timeline tests.test_evidence tests.test_graph tests.test_agentic_research
+
+# Frontend
+cd frontend && npm run lint && npx tsc --noEmit && npm test && npm run build
+
+# Live end-to-end (real Ollama + your real indexed data)
+python tests/test_api.py
 ```
 
-**Backend unit tests** — fast, fully mocked (no Ollama, no Chroma, no
-network); safe to run anywhere and in CI:
+`tests/__init__.py` redirects `CONTEXTIQ_DATA_DIR` / `CONTEXTIQ_CHROMA_DIR` to a temporary directory so test runs never touch your knowledge base (set `CONTEXTIQ_TEST_USE_REAL_DATA=1` to opt out). Some older suites load the embedding model and are slow on first run.
 
-```bash
-python -m unittest tests.test_unit -v
-```
+## Security and privacy
 
-**Backend end-to-end** — drives the real API through FastAPI's
-`TestClient` against a real database, embedding model, and Ollama.
-Requires Ollama running and the demo corpus indexed:
+- Local, single-user application; the API is unauthenticated by design — keep it on `localhost` or a trusted network.
+- Uploads are validated by extension and size; filenames are reduced to their base name; uploaded content is never executed.
+- Document text is treated as untrusted in every prompt; model output is parsed defensively and validated (evidence ids, quotes, citations) before use.
+- Client-supplied scopes are validated server-side and re-applied to every retrieval result.
+- Error responses never include stack traces, paths, or exception text.
+- No telemetry and no hosted AI APIs. The only optional network-dependent feature is browser speech recognition, which is disclosed and opt-in.
 
-```bash
-python tests/test_api.py     # every REST endpoint, incl. streaming
-```
+## Known limitations
 
-## Continuous integration
-
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every
-push and PR: the frontend job lints, tests, and builds; the backend
-job runs the mocked unit suite. Both are self-contained — no live
-Ollama or Chroma is needed — so CI stays fast and deterministic.
-
-## Security
-
-ContextIQ is designed as a **local, single-user** application and the API
-is unauthenticated by design. Run it on `localhost` (or a trusted
-private network) — do not expose the backend to untrusted networks
-without adding authentication in front of it.
+- Citation checks, contradictions, timelines and graph relations are model-assisted interpretations by a small local model — useful signals, not proof.
+- Timeline date validation is per passage (see above); graph extraction reads at most 8 date/name-dense passages per document.
+- Deep research sub-question status reflects evidence retrieval, not answer completeness.
+- Voice input availability and privacy depend on the browser.
 
 ## License
 
