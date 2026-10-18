@@ -11,6 +11,7 @@
 import { Loader2, Send, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { VoiceInputButton } from "@/components/chat/voice-input";
 import { useChat } from "@/hooks/useChat";
 
 // ~6 lines before the field scrolls internally instead of pushing
@@ -38,6 +39,12 @@ export function ChatInput() {
     if (!question || isGenerating) return;
     sendMessage(question);
     setValue("");
+  }
+
+  // Voice transcripts land in the box for review — never auto-sent.
+  function insertTranscript(text: string) {
+    setValue((v) => (v.trim() ? `${v.trimEnd()} ${text}` : text));
+    textareaRef.current?.focus();
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -68,6 +75,7 @@ export function ChatInput() {
             aria-label="Chat input"
             className="max-h-40 flex-1 resize-none bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground"
           />
+          <VoiceInputButton onTranscript={insertTranscript} disabled={isGenerating} />
           {isGenerating ? (
             <button
               type="submit"

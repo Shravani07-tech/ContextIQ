@@ -25,6 +25,7 @@ import { EvidencePanel } from "@/components/insights/evidence-view";
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { SourceCards } from "@/components/chat/source-cards";
 import { SuggestedQuestions } from "@/components/chat/suggested-questions";
+import { ReadAloudButton } from "@/components/chat/read-aloud-button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { useChat } from "@/hooks/useChat";
 import type { ChatMessage } from "@/lib/types";
@@ -136,6 +137,7 @@ export function MessageBubble({
               label="Copy answer"
               className="p-1"
             />
+            <ReadAloudButton text={message.content} />
             <ExportReportButton message={message} />
             {isLastAssistant && (
               <button
