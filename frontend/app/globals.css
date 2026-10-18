@@ -207,6 +207,23 @@
 }
 
 /* --------------------------------------------------------------------------
+   Shared action buttons for workspace tools and analysis dialogs, so the
+   new views share one size, radius and state language instead of each
+   component re-declaring its own utility soup.
+   -------------------------------------------------------------------------- */
+@layer components {
+  .tool-button {
+    @apply flex h-8 items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .primary-button {
+    @apply flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors duration-150 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .secondary-button {
+    @apply flex h-8 items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 text-xs font-medium text-foreground transition-colors duration-150 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50;
+  }
+}
+
+/* --------------------------------------------------------------------------
    Code syntax highlighting (rehype-highlight / highlight.js token
    classes). Deliberately reuses the EXISTING accent + status tokens
    rather than introducing a separate code-theme palette — six colors

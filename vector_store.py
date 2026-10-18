@@ -121,6 +121,44 @@ def get_stored_filenames() -> list[str]:
     return sorted({meta["filename"] for meta in records["metadatas"]})
 
 
+def get_document_chunks(filename: str, limit: int = 200) -> list[dict]:
+    """
+    Return up to ``limit`` stored chunks of one document, in document
+    order, shaped like retrieval hits (minus similarity).
+
+    Used by whole-document analyses (timeline, knowledge graph) that
+    must read a document's own passages rather than query results.
+    """
+    collection = get_collection()
+    records = collection.get(
+        where={"filename": filename},
+        include=["documents", "metadatas"],
+        limit=limit,
+    )
+
+    def _index(chunk_id: str) -> int:
+        tail = chunk_id.rsplit("-", 1)[-1]
+        return int(tail) if tail.isdigit() else 0
+
+    chunks = [
+        {
+            "filename": meta.get("filename", filename),
+            "chunk_id": cid,
+            "chunk_text": text or "",
+            "page": meta.get("page"),
+            "slide": meta.get("slide"),
+            "sheet": meta.get("sheet"),
+            "section": meta.get("section"),
+            "document_id": meta.get("document_id"),
+        }
+        for cid, text, meta in zip(
+            records["ids"], records["documents"], records["metadatas"]
+        )
+    ]
+    chunks.sort(key=lambda c: _index(c["chunk_id"]))
+    return chunks
+
+
 def delete_document(filename: str) -> int:
     """
     Delete every chunk belonging to one filename from the collection.

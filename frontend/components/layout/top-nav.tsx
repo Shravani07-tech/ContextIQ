@@ -6,6 +6,7 @@
 
 import { Menu } from "lucide-react";
 
+import { WorkspaceTools } from "@/components/layout/workspace-tools";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import {
   Sheet,
@@ -53,7 +54,8 @@ export function TopNav() {
             <Sidebar />
           </SheetContent>
         </Sheet>
-        <span className="text-[13px] font-medium">Chat</span>
+        <span className="hidden text-[13px] font-medium sm:inline">Workspace</span>
+        <WorkspaceTools />
       </div>
 
       <div className="flex items-center gap-3">

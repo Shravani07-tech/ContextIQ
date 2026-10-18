@@ -7,6 +7,8 @@
 
 from pydantic import BaseModel, Field, field_validator
 
+from api.schemas.insights import TimelineEvent
+
 
 # --- chat -------------------------------------------------------------------
 
@@ -249,16 +251,20 @@ class ResearchResponse(BaseModel):
 
 
 class ReportExportRequest(BaseModel):
-    """Payload sent to /research/export to generate a downloadable report."""
+    """Payload sent to /research/export to generate a downloadable report.
+
+    Every list and text field is bounded: the payload comes from the
+    browser, and ReportLab layout cost grows with its size."""
 
     format: str = Field(
         default="markdown",
         description="Export format: 'markdown', 'pdf', or 'txt'",
     )
-    question: str = Field(description="The research question")
-    answer: str = Field(description="The research answer / synthesis")
+    question: str = Field(max_length=2000, description="The research question")
+    answer: str = Field(max_length=100_000, description="The research answer / synthesis")
     sources: list[Source] = Field(
         default_factory=list,
+        max_length=200,
         description="Source citations included in the report",
     )
     doc_count: int = Field(
@@ -280,6 +286,11 @@ class ReportExportRequest(BaseModel):
     document_filter: str | None = Field(
         default=None,
         description="Active document filter, if scoped",
+    )
+    timeline: list[TimelineEvent] = Field(
+        default_factory=list,
+        max_length=200,
+        description="Timeline events to include (from POST /timeline)",
     )
 
 

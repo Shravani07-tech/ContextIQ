@@ -255,3 +255,69 @@ export interface CompareResponse {
 }
 
 
+
+// --- Analysis features (api/schemas/insights.py) ----------------------------
+
+/** Locator for a stored passage — always copied from the vector store. */
+export interface SourceRef {
+  filename: string;
+  chunk_id: string;
+  page?: number | null;
+  slide?: number | null;
+  sheet?: string | null;
+  section?: string | null;
+  document_id?: string | null;
+  preview?: string | null;
+  quote?: string | null;
+}
+
+export interface ScopeParams {
+  collection_id?: string | null;
+  filenames?: string[] | null;
+}
+
+export type DateCertainty =
+  | "EXACT"
+  | "APPROXIMATE"
+  | "AMBIGUOUS"
+  | "RELATIVE"
+  | "UNKNOWN";
+
+export interface TimelineDate {
+  text: string;
+  start: string | null;
+  end: string | null;
+  precision: string;
+  certainty: DateCertainty;
+  qualifier?: string | null;
+  note?: string | null;
+  in_source: boolean;
+}
+
+export interface TimelineEvent {
+  id: string;
+  date: TimelineDate;
+  date_type: "EVENT" | "PUBLICATION" | "MODIFIED" | "OTHER";
+  description: string;
+  actors: string[];
+  source: SourceRef;
+}
+
+export interface TimelineRequest extends ScopeParams {
+  focus?: string | null;
+  max_events?: number | null;
+  use_llm?: boolean;
+}
+
+export interface TimelineResponse {
+  scope: string;
+  focus?: string | null;
+  events: TimelineEvent[];
+  undated_events: TimelineEvent[];
+  document_dates: { filename: string; indexed_at?: string | null }[];
+  extraction_method: "llm" | "pattern" | "none";
+  chunks_analyzed: number;
+  documents_analyzed: number;
+  events_discarded: number;
+  warnings: string[];
+}

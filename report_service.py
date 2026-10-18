@@ -85,6 +85,11 @@ class ResearchReportService:
                     md_lines.append(f"  - *Citations:* {', '.join(v.get('citation_ids'))}")
             md_lines.append("")
 
+        for title, lines in self._extra_sections(payload):
+            md_lines.append(f"## {title}")
+            md_lines.extend(lines)
+            md_lines.append("")
+
         # Sources & Evidence Section
         md_lines.append("## Sources & Evidence")
         if sources:
@@ -248,6 +253,14 @@ class ResearchReportService:
                 )
                 story.append(Paragraph(v_text, body_style))
 
+        for title, lines in self._extra_sections(payload):
+            story.append(Spacer(1, 6))
+            story.append(Paragraph(self._escape_html(title), h2_style))
+            for line in lines:
+                if line.strip():
+                    clean = re.sub(r"\*\*|`", "", line.strip())
+                    story.append(Paragraph(self._escape_html(clean), body_style))
+
         # Sources Table / List
         story.append(Spacer(1, 8))
         story.append(Paragraph("Sources & Evidence", h2_style))
@@ -301,6 +314,38 @@ class ResearchReportService:
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
+
+    # ------------------------------------------------------------------
+    # Optional sections contributed by the 2.0 analysis features. Each
+    # returns (title, markdown lines); the PDF renderer strips the light
+    # markdown. Sections only appear when the payload carries their data.
+    # ------------------------------------------------------------------
+    def _extra_sections(self, payload: dict[str, Any]) -> list[tuple[str, list[str]]]:
+        sections: list[tuple[str, list[str]]] = []
+
+        timeline = payload.get("timeline") or []
+        if timeline:
+            lines = [
+                "Dates keep their original wording. Certainty: EXACT, APPROXIMATE, "
+                "AMBIGUOUS, RELATIVE or UNKNOWN. Undated events are listed last.",
+                "",
+            ]
+            for e in timeline:
+                date = e.get("date") or {}
+                src = e.get("source") or {}
+                loc = src.get("filename", "")
+                if src.get("page"):
+                    loc += f", p. {src['page']}"
+                kind = e.get("date_type", "EVENT")
+                kind_str = "" if kind == "EVENT" else f", {kind.lower()} date"
+                lines.append(
+                    f"- **{date.get('text') or 'Undated'}** "
+                    f"({str(date.get('certainty', 'UNKNOWN')).lower()}{kind_str}): "
+                    f"{e.get('description', '')} [{loc}]"
+                )
+            sections.append(("Timeline", lines))
+
+        return sections
 
     def _escape_html(self, text: str) -> str:
         """Escape HTML characters for safe ReportLab paragraph embedding."""

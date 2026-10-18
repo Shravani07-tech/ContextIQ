@@ -1,0 +1,109 @@
+# api/schemas/insights.py
+#
+# Request/response contracts for the ContextIQ 2.0 analysis features:
+# timeline extraction (C7), evidence assessment (C8), the knowledge
+# graph (C10) and bounded agentic research (C11). Kept apart from
+# models.py so the original chat/ingestion contract stays readable.
+#
+# Every request that names documents is bounded here (list lengths,
+# string lengths) before any service runs; scope membership itself is
+# validated by scope.resolve_scope().
+
+from pydantic import BaseModel, Field, field_validator
+
+
+def _strip_optional(v: str | None, max_len: int) -> str | None:
+    if v is None:
+        return None
+    v = v.strip()
+    if len(v) > max_len:
+        raise ValueError(f"must be at most {max_len} characters")
+    return v or None
+
+
+class ScopedRequest(BaseModel):
+    collection_id: str | None = Field(
+        default=None, description="Restrict to documents in this collection"
+    )
+    filenames: list[str] | None = Field(
+        default=None,
+        max_length=25,
+        description="Restrict to these documents (must be inside the collection, if one is given)",
+    )
+
+
+class SourceRef(BaseModel):
+    """Locator for a stored passage. Always copied from the vector store."""
+
+    filename: str
+    chunk_id: str
+    page: int | None = None
+    slide: int | None = None
+    sheet: str | None = None
+    section: str | None = None
+    document_id: str | None = None
+    preview: str | None = None
+    quote: str | None = None
+
+
+# --- C7 timeline ---------------------------------------------------------------
+
+
+class TimelineRequest(ScopedRequest):
+    focus: str | None = Field(
+        default=None,
+        description="Optional topic to focus on (uses retrieval instead of a full scan)",
+    )
+    max_events: int | None = Field(default=None, ge=1, le=100)
+    use_llm: bool = Field(
+        default=True,
+        description="False forces the deterministic pattern-based extractor",
+    )
+
+    @field_validator("focus")
+    @classmethod
+    def _focus(cls, v: str | None) -> str | None:
+        return _strip_optional(v, 300)
+
+
+class TimelineDate(BaseModel):
+    text: str = Field(description="Date wording exactly as written in the source")
+    start: str | None = Field(description="Partial ISO start (e.g. '2024', '2024-03')")
+    end: str | None = None
+    precision: str = Field(description="day|month|quarter|half|year|decade|range|unknown")
+    certainty: str = Field(description="EXACT|APPROXIMATE|AMBIGUOUS|RELATIVE|UNKNOWN")
+    qualifier: str | None = Field(default=None, description="before/after/by/since, if stated")
+    note: str | None = None
+    in_source: bool = Field(description="True when the wording was found in the cited passage")
+
+
+class TimelineEvent(BaseModel):
+    id: str
+    date: TimelineDate
+    date_type: str = Field(description="EVENT|PUBLICATION|MODIFIED|OTHER")
+    description: str
+    actors: list[str] = Field(default_factory=list)
+    source: SourceRef
+
+
+class DocumentDate(BaseModel):
+    filename: str
+    indexed_at: str | None = Field(
+        default=None, description="When the file was indexed into ContextIQ (not an event date)"
+    )
+
+
+class TimelineResponse(BaseModel):
+    scope: str
+    focus: str | None = None
+    events: list[TimelineEvent]
+    undated_events: list[TimelineEvent] = Field(
+        default_factory=list,
+        description="Events whose date is missing, relative, or not found in the source",
+    )
+    document_dates: list[DocumentDate] = Field(default_factory=list)
+    extraction_method: str = Field(description="llm | pattern | none")
+    chunks_analyzed: int
+    documents_analyzed: int
+    events_discarded: int = 0
+    warnings: list[str] = Field(default_factory=list)

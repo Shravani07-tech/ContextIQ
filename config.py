@@ -143,6 +143,35 @@ CONTRADICTION_MODEL = os.getenv(
     "CONTEXTIQ_CONTRADICTION_MODEL", LLM_MODEL_NAME
 )
 
+# Timeline extraction (C7). Chunks are pre-selected by how many date
+# phrases they contain, so one bounded LLM call sees the date-dense
+# passages; without Ollama a pattern-based extractor is used instead.
+TIMELINE_MAX_DOCUMENTS = _env_int("CONTEXTIQ_TIMELINE_MAX_DOCUMENTS", 10)
+TIMELINE_MAX_CHUNKS = _env_int("CONTEXTIQ_TIMELINE_MAX_CHUNKS", 12)
+TIMELINE_SCAN_CHUNKS_PER_DOC = _env_int("CONTEXTIQ_TIMELINE_SCAN_CHUNKS_PER_DOC", 200)
+TIMELINE_MAX_INPUT_CHARS = _env_int("CONTEXTIQ_TIMELINE_MAX_INPUT_CHARS", 8000)
+TIMELINE_MAX_EVENTS = _env_int("CONTEXTIQ_TIMELINE_MAX_EVENTS", 40)
+TIMELINE_TIMEOUT = _env_int("CONTEXTIQ_TIMELINE_TIMEOUT", 90)
+
+# Knowledge graph (C10). Extraction is per document and bounded by
+# chunk count; results persist in SQLite next to the other metadata.
+GRAPH_MAX_CHUNKS_PER_DOC = _env_int("CONTEXTIQ_GRAPH_MAX_CHUNKS_PER_DOC", 8)
+GRAPH_MAX_DOCUMENTS_PER_BUILD = _env_int("CONTEXTIQ_GRAPH_MAX_DOCUMENTS_PER_BUILD", 10)
+GRAPH_MAX_INPUT_CHARS = _env_int("CONTEXTIQ_GRAPH_MAX_INPUT_CHARS", 6000)
+GRAPH_MAX_NODES = _env_int("CONTEXTIQ_GRAPH_MAX_NODES", 150)
+GRAPH_TIMEOUT = _env_int("CONTEXTIQ_GRAPH_TIMEOUT", 90)
+
+# Bounded agentic research (C11). Hard ceilings, not targets: the
+# orchestrator stops early when evidence is sufficient.
+AGENT_MAX_SUBQUESTIONS = _env_int("CONTEXTIQ_AGENT_MAX_SUBQUESTIONS", 4)
+AGENT_MAX_FOLLOWUPS = _env_int("CONTEXTIQ_AGENT_MAX_FOLLOWUPS", 2)
+AGENT_MAX_RETRIEVALS = _env_int("CONTEXTIQ_AGENT_MAX_RETRIEVALS", 8)
+AGENT_TOP_K = _env_int("CONTEXTIQ_AGENT_TOP_K", 4)
+AGENT_MAX_CONTEXT_CHARS = _env_int("CONTEXTIQ_AGENT_MAX_CONTEXT_CHARS", 9000)
+AGENT_MAX_ANSWER_TOKENS = _env_int("CONTEXTIQ_AGENT_MAX_ANSWER_TOKENS", 900)
+AGENT_TIME_BUDGET = _env_int("CONTEXTIQ_AGENT_TIME_BUDGET", 300)
+AGENT_STEP_TIMEOUT = _env_int("CONTEXTIQ_AGENT_STEP_TIMEOUT", 120)
+
 
 
 

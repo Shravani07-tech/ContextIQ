@@ -24,6 +24,9 @@ import type {
   StatusResponse,
   TagActionResponse,
   TagListResponse,
+  TimelineEvent,
+  TimelineRequest,
+  TimelineResponse,
   UploadResponse,
   VerificationItem,
   ContradictionItem,
@@ -149,6 +152,18 @@ export const api = {
       120_000,
     ),
 
+
+  /** POST /timeline — source-linked timeline for a collection or selection. */
+  timeline: (data: TimelineRequest) =>
+    request<TimelineResponse>(
+      "/timeline",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      180_000,
+    ),
 
   /** PATCH /documents/{filename} — assign or move document to a collection. */
   moveDocument: (filename: string, collectionId: string | null) =>
@@ -479,6 +494,7 @@ export const api = {
     contradictions?: ContradictionItem[];
     collection_name?: string | null;
     document_filter?: string | null;
+    timeline?: TimelineEvent[];
   }): Promise<Blob> => {
     const response = await fetch(`${API_URL}/research/export`, {
       method: "POST",

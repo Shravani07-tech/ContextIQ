@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.deps import get_rag_service
-from api.routers import chat, collections, compare, documents, research, system
+from api.routers import chat, collections, compare, documents, research, system, timeline
 from config import CORS_ORIGINS, MAX_UPLOAD_MB
 
 # Total-request ceiling, well above one file's cap to allow legitimate
@@ -47,6 +47,7 @@ OPENAPI_TAGS = [
     {"name": "collections", "description": "Workspace collections management."},
     {"name": "chat", "description": "Grounded question answering with source citations."},
     {"name": "research", "description": "Multi-document synthesis across all indexed documents."},
+    {"name": "analysis", "description": "Timeline extraction, evidence assessment, and the knowledge graph."},
     {"name": "documents", "description": "Upload, index, and list knowledge-base documents."},
     {"name": "system", "description": "Health, status, and database administration."},
 ]
@@ -160,3 +161,4 @@ app.include_router(documents.router)
 app.include_router(chat.router)
 app.include_router(research.router, tags=["research"])
 app.include_router(compare.router)
+app.include_router(timeline.router)
