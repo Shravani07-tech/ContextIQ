@@ -97,6 +97,63 @@ def init_db() -> None:
             );
             """
         )
+
+        # Knowledge graph (C10). Additive tables only -- existing data is
+        # untouched. Facts are keyed by filename + chunk_id so every node
+        # and edge traces back to a stored passage; rows are removed
+        # explicitly when a document is deleted or re-indexed (no FK to
+        # documents, because CLI-ingested files have no metadata row).
+        cursor.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS graph_extractions (
+                filename TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                method TEXT,
+                error TEXT,
+                chunks_analyzed INTEGER DEFAULT 0,
+                entity_count INTEGER DEFAULT 0,
+                relation_count INTEGER DEFAULT 0,
+                extracted_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS graph_entities (
+                entity_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                normalized TEXT NOT NULL,
+                type TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS graph_mentions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                chunk_id TEXT NOT NULL,
+                surface TEXT NOT NULL,
+                page INTEGER,
+                slide INTEGER,
+                sheet TEXT,
+                section TEXT,
+                UNIQUE(entity_id, chunk_id),
+                FOREIGN KEY(entity_id) REFERENCES graph_entities(entity_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_graph_mentions_filename ON graph_mentions(filename);
+            CREATE TABLE IF NOT EXISTS graph_relations (
+                relation_id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                relation TEXT NOT NULL,
+                status TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                chunk_id TEXT NOT NULL,
+                evidence TEXT,
+                page INTEGER,
+                slide INTEGER,
+                sheet TEXT,
+                section TEXT,
+                FOREIGN KEY(source_id) REFERENCES graph_entities(entity_id) ON DELETE CASCADE,
+                FOREIGN KEY(target_id) REFERENCES graph_entities(entity_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_graph_relations_filename ON graph_relations(filename);
+            """
+        )
         conn.commit()
 
 

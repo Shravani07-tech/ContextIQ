@@ -397,3 +397,73 @@ export interface DocumentCoverage {
   best_similarity?: number | null;
   note?: string | null;
 }
+
+// --- Knowledge graph (C10) ---------------------------------------------------
+
+export interface GraphExtraction {
+  filename: string;
+  status: "completed" | "failed";
+  method?: "llm" | "pattern" | "none" | null;
+  error?: string | null;
+  chunks_analyzed: number;
+  entity_count: number;
+  relation_count: number;
+  extracted_at?: string | null;
+}
+
+export interface GraphBuildResponse {
+  scope: string;
+  processed: GraphExtraction[];
+  remaining: number;
+}
+
+export interface GraphNode {
+  id: string;
+  name: string;
+  type: string;
+  mentions: number;
+  documents: number;
+  degree: number;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+  status: "SUPPORTED" | "UNCERTAIN";
+  evidence_count: number;
+}
+
+export interface GraphResponse {
+  scope: string;
+  documents_in_scope: number;
+  documents_extracted: number;
+  extractions: GraphExtraction[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+  total_entities: number;
+  possible_duplicates: { a: string; b: string; a_name: string; b_name: string; reason: string }[];
+}
+
+export interface EntityRef {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface EntityDetail {
+  entity: EntityRef;
+  mentions: { surface: string; source: SourceRef }[];
+  relations: {
+    id: string;
+    relation: string;
+    status: "SUPPORTED" | "UNCERTAIN";
+    direction: "outgoing" | "incoming";
+    other: EntityRef;
+    evidence?: string | null;
+    source: SourceRef;
+  }[];
+  documents: string[];
+}

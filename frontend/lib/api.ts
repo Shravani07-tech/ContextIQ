@@ -20,12 +20,16 @@ import type {
   EvidenceAssessment,
   EvidenceAssessRequest,
   EvidenceAssessResponse,
+  EntityDetail,
+  GraphBuildResponse,
+  GraphResponse,
   HealthResponse,
   HistoryMessage,
   IndexResponse,
   Source,
   StatusResponse,
   TagActionResponse,
+  ScopeParams,
   TagListResponse,
   TimelineEvent,
   TimelineRequest,
@@ -108,6 +112,15 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
+/** Query string for scoped GET endpoints (collection + repeated filenames). */
+function scopeQuery(params: ScopeParams & { limit?: number }): string {
+  const q = new URLSearchParams();
+  if (params.collection_id) q.set("collection_id", params.collection_id);
+  for (const f of params.filenames ?? []) q.append("filenames", f);
+  if (params.limit) q.set("limit", String(params.limit));
+  return q.toString();
+}
+
 export const api = {
   /** GET /health — liveness + Chroma/Ollama reachability. */
   health: () => request<HealthResponse>("/health"),
@@ -167,6 +180,26 @@ export const api = {
       },
       150_000,
     ),
+
+  /** POST /graph/build — extract the knowledge graph for documents in scope. */
+  buildGraph: (data: ScopeParams & { force?: boolean }) =>
+    request<GraphBuildResponse>(
+      "/graph/build",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      600_000,
+    ),
+
+  /** GET /graph — nodes and edges for a scope. */
+  graph: (params: ScopeParams & { limit?: number }) =>
+    request<GraphResponse>(`/graph?${scopeQuery(params)}`),
+
+  /** GET /graph/entities/{id} — one entity with mentions and evidence. */
+  graphEntity: (id: string, params: ScopeParams) =>
+    request<EntityDetail>(`/graph/entities/${encodeURIComponent(id)}?${scopeQuery(params)}`),
 
   /** POST /timeline — source-linked timeline for a collection or selection. */
   timeline: (data: TimelineRequest) =>

@@ -24,6 +24,7 @@ from api.routers import (
     compare,
     documents,
     evidence,
+    graph,
     research,
     system,
     timeline,
@@ -172,3 +173,4 @@ app.include_router(research.router, tags=["research"])
 app.include_router(compare.router)
 app.include_router(timeline.router)
 app.include_router(evidence.router)
+app.include_router(graph.router)

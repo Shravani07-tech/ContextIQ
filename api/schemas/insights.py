@@ -182,3 +182,94 @@ class DocumentCoverage(BaseModel):
     passages: int
     best_similarity: float | None = None
     note: str | None = None
+
+
+# --- C10 knowledge graph -------------------------------------------------------
+
+
+class GraphBuildRequest(ScopedRequest):
+    force: bool = Field(default=False, description="Re-extract documents already processed")
+    use_llm: bool = Field(default=True, description="False forces the pattern-based extractor")
+
+
+class GraphExtraction(BaseModel):
+    filename: str
+    status: str = Field(description="completed | failed")
+    method: str | None = Field(default=None, description="llm | pattern | none")
+    error: str | None = None
+    chunks_analyzed: int = 0
+    entity_count: int = 0
+    relation_count: int = 0
+    extracted_at: str | None = None
+
+
+class GraphBuildResponse(BaseModel):
+    scope: str
+    processed: list[GraphExtraction]
+    remaining: int = Field(description="Documents in scope still waiting for extraction")
+
+
+class GraphNode(BaseModel):
+    id: str
+    name: str
+    type: str
+    mentions: int
+    documents: int
+    degree: int
+
+
+class GraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation: str
+    status: str = Field(description="SUPPORTED (quote found in passage) | UNCERTAIN")
+    evidence_count: int
+
+
+class PossibleDuplicate(BaseModel):
+    a: str
+    b: str
+    a_name: str
+    b_name: str
+    reason: str
+
+
+class GraphResponse(BaseModel):
+    scope: str
+    documents_in_scope: int
+    documents_extracted: int
+    extractions: list[GraphExtraction]
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    truncated: bool
+    total_entities: int
+    possible_duplicates: list[PossibleDuplicate] = Field(default_factory=list)
+
+
+class EntityRef(BaseModel):
+    id: str
+    name: str
+    type: str
+
+
+class EntityMention(BaseModel):
+    surface: str
+    source: SourceRef
+
+
+class EntityRelation(BaseModel):
+    id: str
+    relation: str
+    status: str
+    direction: str
+    other: EntityRef
+    evidence: str | None = None
+    source: SourceRef
+
+
+class EntityDetailResponse(BaseModel):
+    entity: EntityRef
+    mentions: list[EntityMention]
+    relations: list[EntityRelation]
+    documents: list[str]

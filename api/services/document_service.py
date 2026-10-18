@@ -108,6 +108,13 @@ class DocumentService:
                     file_size=size_bytes,
                     chunk_count=chunks,
                 )
+                # Re-indexing replaces chunk ids, so graph facts derived from
+                # the previous chunks are stale; drop them (rebuilt on demand).
+                try:
+                    from graph_service import GraphService
+                    GraphService.delete_document(name)
+                except Exception:
+                    logger.exception("Could not reset graph facts for '%s'", name)
                 try:
                     from summary_service import SummaryService
                     SummaryService().summarize_document(name)
@@ -151,6 +158,11 @@ class DocumentService:
             SummaryService().delete_summary(safe_name)
         except Exception:
             logger.exception("Failed to delete summary for '%s'", safe_name)
+        try:
+            from graph_service import GraphService
+            GraphService.delete_document(safe_name)
+        except Exception:
+            logger.exception("Failed to delete graph facts for '%s'", safe_name)
 
         path = os.path.join(DATA_DIR, safe_name)
         if os.path.isfile(path):

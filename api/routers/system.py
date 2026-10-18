@@ -96,4 +96,7 @@ def clear(rag: RagServiceDep) -> ClearDatabaseResponse:
     """
     clear_database()
     rag.refresh_collection()
+    # Graph facts point at chunk ids that no longer exist.
+    from graph_service import GraphService
+    GraphService.clear()
     return ClearDatabaseResponse(status="cleared", vector_count=get_vector_count())
