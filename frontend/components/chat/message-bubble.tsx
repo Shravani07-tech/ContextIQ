@@ -20,6 +20,7 @@ import { AlertCircle, RotateCcw } from "lucide-react";
 
 import { ContradictionCards } from "@/components/chat/contradiction-cards";
 import { ExportReportButton } from "@/components/chat/export-report-button";
+import { ResearchPanel } from "@/components/chat/research-progress";
 import { EvidencePanel } from "@/components/insights/evidence-view";
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { SourceCards } from "@/components/chat/source-cards";
@@ -108,6 +109,8 @@ export function MessageBubble({
         {!isUser && message.contradictions && message.contradictions.length > 0 && (
           <ContradictionCards contradictions={message.contradictions} />
         )}
+        {/* Bounded deep-research plan, statuses and limits (C11). */}
+        {!isUser && message.research && <ResearchPanel research={message.research} />}
         {/* Rule-based evidence rating per verified claim (C8). */}
         {!isUser && <EvidencePanel assessment={message.evidenceAssessment} />}
         {/* Suggested follow-up questions (assistant messages only). */}

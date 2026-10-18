@@ -109,6 +109,8 @@ export interface ChatMessage {
   evidenceAssessment?: EvidenceAssessment | null;
   /** The question this answer responds to (used for report export). */
   question?: string;
+  /** Structured result of a bounded deep-research run (C11). */
+  research?: Omit<AgentResearchResult, "answer" | "sources" | "citation_verification" | "contradictions" | "evidence_assessment">;
   /** Set on a failed system message so the UI can offer a "Retry"
       action that resends this exact question. */
   retryQuestion?: string;
@@ -466,4 +468,41 @@ export interface EntityDetail {
     source: SourceRef;
   }[];
   documents: string[];
+}
+
+// --- Bounded agentic research (C11) -----------------------------------------
+
+export interface ResearchStep {
+  stage: string;
+  message: string;
+  found?: number | null;
+}
+
+export interface ResearchSubquestion {
+  question: string;
+  status: "ANSWERED" | "PARTIAL" | "UNRESOLVED";
+  queries: string[];
+  source_labels: string[];
+  note?: string | null;
+}
+
+export interface ResearchSource extends Source {
+  label: string;
+}
+
+export interface AgentResearchResult {
+  question: string;
+  status: "COMPLETED" | "PARTIAL" | "CANCELLED" | "FAILED";
+  scope: string;
+  answer: string;
+  plan_method: "single" | "llm" | "heuristic";
+  subquestions: ResearchSubquestion[];
+  unresolved: string[];
+  sources: ResearchSource[];
+  citation_verification: VerificationItem[];
+  contradictions: ContradictionItem[];
+  evidence_assessment?: EvidenceAssessment | null;
+  steps: ResearchStep[];
+  warnings: string[];
+  limits: Record<string, number>;
 }

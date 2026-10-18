@@ -20,8 +20,17 @@ import { useChat } from "@/hooks/useChat";
 const SCROLL_BUTTON_THRESHOLD = 120;
 
 export function ChatArea() {
-  const { messages, isThinking, isStreaming, streamingContent, streamingSources } =
-    useChat();
+  const {
+    messages,
+    isThinking,
+    isStreaming,
+    streamingContent,
+    streamingSources,
+    isResearchMode,
+    researchDepth,
+    researchSteps,
+  } = useChat();
+  const showProgress = isResearchMode && researchDepth === "deep";
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
@@ -62,6 +71,7 @@ export function ChatArea() {
               showTyping={isThinking}
               streamingContent={isStreaming ? streamingContent : ""}
               streamingSources={streamingSources}
+              researchSteps={showProgress ? researchSteps : undefined}
             />
           </>
         ) : (

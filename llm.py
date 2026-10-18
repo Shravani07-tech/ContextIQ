@@ -125,6 +125,7 @@ class LLM:
         system_prompt: str,
         user_prompt: str,
         history: list[dict] | None = None,
+        max_tokens: int | None = None,
     ) -> Iterator[str]:
         """
         Same request as generate(), but stream=True: Ollama responds
@@ -142,7 +143,9 @@ class LLM:
         """
         response = requests.post(
             f"{self.base_url}/api/chat",
-            json=self._payload(system_prompt, user_prompt, stream=True, history=history),
+            json=self._payload(
+                system_prompt, user_prompt, stream=True, history=history, max_tokens=max_tokens
+            ),
             stream=True,
             timeout=self.timeout,
         )

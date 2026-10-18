@@ -12,9 +12,10 @@ import { useEffect, useRef } from "react";
 
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { MessageBubble } from "@/components/chat/message-bubble";
+import { ResearchProgress } from "@/components/chat/research-progress";
 import { SourceCards } from "@/components/chat/source-cards";
 import { TypingIndicator } from "@/components/chat/typing-indicator";
-import type { ChatMessage, Source } from "@/lib/types";
+import type { ChatMessage, ResearchStep, Source } from "@/lib/types";
 
 function gapClass(prev: ChatMessage | undefined, current: ChatMessage): string {
   if (!prev) return "";
@@ -27,6 +28,7 @@ export function MessageList({
   showTyping = false,
   streamingContent = "",
   streamingSources = [],
+  researchSteps,
 }: {
   messages: ChatMessage[];
   showTyping?: boolean;
@@ -34,6 +36,9 @@ export function MessageList({
       a new answer streams in — not yet a permanent ChatMessage. */
   streamingContent?: string;
   streamingSources?: Source[];
+  /** Live deep-research steps; when present they replace the bare
+      typing indicator so the user can see what is happening. */
+  researchSteps?: ResearchStep[];
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   const didMount = useRef(false);
@@ -50,7 +55,7 @@ export function MessageList({
       block: "end",
     });
     didMount.current = true;
-  }, [messages.length, showTyping, streamingContent]);
+  }, [messages.length, showTyping, streamingContent, researchSteps?.length]);
 
   // Regenerate is only offered on the latest FINALIZED assistant
   // answer, and only when nothing new is currently being generated
@@ -97,10 +102,16 @@ export function MessageList({
         ))}
       </div>
 
-      {showTyping && (
+      {researchSteps && (showTyping || streamingContent) ? (
         <div className="mt-4">
-          <TypingIndicator />
+          <ResearchProgress steps={researchSteps} />
         </div>
+      ) : (
+        showTyping && (
+          <div className="mt-4">
+            <TypingIndicator />
+          </div>
+        )
       )}
 
       {streamingContent && (

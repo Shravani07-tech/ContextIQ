@@ -32,6 +32,11 @@ export function ExportReportButton({
         citation_verification: message.citationVerification,
         contradictions: message.contradictions,
         evidence_assessment: message.evidenceAssessment,
+        doc_count: new Set((message.sources ?? []).map((s) => s.filename)).size,
+        subquestions: message.research?.subquestions,
+        unresolved: message.research?.unresolved,
+        research_status: message.research?.status ?? null,
+        collection_name: message.research?.scope ?? null,
       });
 
       const ext = format === "markdown" ? "md" : format;

@@ -273,3 +273,67 @@ class EntityDetailResponse(BaseModel):
     mentions: list[EntityMention]
     relations: list[EntityRelation]
     documents: list[str]
+
+
+# --- C11 bounded agentic research ----------------------------------------------
+
+
+class AgentResearchRequest(ScopedRequest):
+    question: str = Field(..., description="The research question")
+    max_subquestions: int | None = Field(
+        default=None, ge=1, le=6, description="Lower the sub-question ceiling for this run"
+    )
+
+    @field_validator("question")
+    @classmethod
+    def _question(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("question must not be empty")
+        if len(v) > 2000:
+            raise ValueError("question must be at most 2000 characters")
+        return v
+
+
+class ResearchSubquestion(BaseModel):
+    question: str
+    status: str = Field(description="ANSWERED | PARTIAL | UNRESOLVED")
+    queries: list[str] = Field(default_factory=list, description="Searches actually run")
+    source_labels: list[str] = Field(default_factory=list, description="Evidence labels (S1, S2, ...)")
+    note: str | None = None
+
+
+class ResearchSource(BaseModel):
+    label: str
+    filename: str
+    chunk_id: str
+    similarity: float
+    page: int | None = None
+    slide: int | None = None
+    sheet: str | None = None
+    section: str | None = None
+    document_id: str | None = None
+    preview: str | None = None
+
+
+class ResearchStep(BaseModel):
+    stage: str
+    message: str
+    found: int | None = None
+
+
+class AgentResearchResult(BaseModel):
+    question: str
+    status: str = Field(description="COMPLETED | PARTIAL | CANCELLED | FAILED")
+    scope: str
+    answer: str
+    plan_method: str = Field(description="single | llm | heuristic")
+    subquestions: list[ResearchSubquestion]
+    unresolved: list[str]
+    sources: list[ResearchSource]
+    citation_verification: list[dict] = Field(default_factory=list)
+    contradictions: list[dict] = Field(default_factory=list)
+    evidence_assessment: EvidenceAssessment | None = None
+    steps: list[ResearchStep]
+    warnings: list[str] = Field(default_factory=list)
+    limits: dict

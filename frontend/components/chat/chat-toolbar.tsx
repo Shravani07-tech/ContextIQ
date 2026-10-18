@@ -6,15 +6,26 @@
 // with every /chat/stream request to restrict retrieval to one document.
 // Research Mode bypasses the document selector and routes to /research/stream.
 
-import { ChevronDown, Eraser, FileText, Files, Layers, MemoryStick, MessageSquare } from "lucide-react";
+import { ChevronDown, Eraser, FileText, Files, Layers, MemoryStick, MessageSquare, Telescope, Zap } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
+import { useScopeLabel } from "@/components/insights/scope-picker";
 import { useChat } from "@/hooks/useChat";
 import { useDocuments } from "@/hooks/useDocuments";
 import { confirmToast } from "@/lib/confirm-toast";
 
 export function ChatToolbar() {
-  const { clearConversation, documentFilter, setDocumentFilter, messages, isResearchMode, setIsResearchMode } = useChat();
+  const {
+    clearConversation,
+    documentFilter,
+    setDocumentFilter,
+    messages,
+    isResearchMode,
+    setIsResearchMode,
+    researchDepth,
+    setResearchDepth,
+  } = useChat();
+  const scopeLabel = useScopeLabel();
   const { data: documents } = useDocuments();
   const docList = documents ?? [];
 
@@ -76,7 +87,7 @@ export function ChatToolbar() {
             type="button"
             id="research-mode-btn"
             onClick={() => setIsResearchMode(true)}
-            title="Research mode: synthesize across all documents"
+            title="Research mode: synthesize across the documents in the active collection"
             className={`flex items-center gap-1 rounded-[3px] px-2 py-0.5 transition-all duration-150 ${
               isResearchMode
                 ? "bg-background text-foreground shadow-sm font-medium"
@@ -157,10 +168,40 @@ export function ChatToolbar() {
           </div>
         )}
 
-        {/* Research mode badge */}
+        {/* Research depth: quick one-pass synthesis or bounded multi-step research */}
         {isResearchMode && (
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-            All Documents · Synthesis
+          <div role="radiogroup" aria-label="Research depth" className="flex rounded-sm border border-border bg-secondary p-0.5 text-xs">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={researchDepth === "quick"}
+              onClick={() => setResearchDepth("quick")}
+              title="One retrieval pass and one synthesis — fastest"
+              className={`flex items-center gap-1 rounded-[3px] px-2 py-0.5 ${
+                researchDepth === "quick" ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Zap className="size-3" aria-hidden />
+              Quick
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={researchDepth === "deep"}
+              onClick={() => setResearchDepth("deep")}
+              title="Plans sub-questions, searches each, follows up on gaps, then verifies — slower, bounded"
+              className={`flex items-center gap-1 rounded-[3px] px-2 py-0.5 ${
+                researchDepth === "deep" ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Telescope className="size-3" aria-hidden />
+              Deep
+            </button>
+          </div>
+        )}
+        {isResearchMode && (
+          <span className="hidden rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary sm:inline">
+            Scope: {scopeLabel}
           </span>
         )}
       </div>

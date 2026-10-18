@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from api.deps import get_rag_service
 from api.routers import (
+    agent_research,
     chat,
     collections,
     compare,
@@ -174,3 +175,4 @@ app.include_router(compare.router)
 app.include_router(timeline.router)
 app.include_router(evidence.router)
 app.include_router(graph.router)
+app.include_router(agent_research.router)

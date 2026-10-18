@@ -32,12 +32,14 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api";
 import type {
+  AgentResearchResult,
   ChatMessage,
   ChatSession,
   ContradictionItem,
   DocumentsResponse,
   EvidenceAssessment,
   HistoryMessage,
+  ResearchStep,
   Source,
   VerificationItem,
 } from "@/lib/types";
@@ -100,7 +102,14 @@ export interface ChatContextValue {
   // research mode
   isResearchMode: boolean;
   setIsResearchMode: (v: boolean) => void;
+  /** "quick" = one-pass synthesis; "deep" = bounded multi-step research. */
+  researchDepth: ResearchDepth;
+  setResearchDepth: (d: ResearchDepth) => void;
+  /** Live progress of a running deep-research request. */
+  researchSteps: ResearchStep[];
 }
+
+export type ResearchDepth = "quick" | "deep";
 
 // Create context with dummy defaults to avoid null checks in sub-components.
 export const ChatContext = createContext<ChatContextValue>({
@@ -128,6 +137,9 @@ export const ChatContext = createContext<ChatContextValue>({
   setDocumentFilter: () => {},
   isResearchMode: false,
   setIsResearchMode: () => {},
+  researchDepth: "quick",
+  setResearchDepth: () => {},
+  researchSteps: [],
 });
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
@@ -143,6 +155,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [documentFilter, setDocumentFilter] = useState<string | null>(null);
   // Research Mode: when true, questions go to /research/stream instead of /chat/stream.
   const [isResearchMode, setIsResearchMode] = useState(false);
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>("quick");
+  const [researchSteps, setResearchSteps] = useState<ResearchStep[]>([]);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -383,6 +397,86 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   );
 
 
+  // Deep research (C11): bounded multi-step run with live progress. The
+  // orchestration lives on the server; this only renders its events.
+  const runDeepResearch = useCallback(
+    (question: string) => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setIsThinking(true);
+      setIsStreaming(false);
+      setStreamingContent("");
+      setStreamingSources([]);
+      setResearchSteps([]);
+
+      let accumulated = "";
+      let result: AgentResearchResult | null = null;
+
+      const finish = () => {
+        abortRef.current = null;
+        setIsThinking(false);
+        setIsStreaming(false);
+        setStreamingContent("");
+        setStreamingSources([]);
+        setResearchSteps([]);
+      };
+
+      api.agentResearchStream(
+        question,
+        {
+          onProgress: (step) => setResearchSteps((prev) => [...prev, step]),
+          onSources: (s) => setStreamingSources(s),
+          onToken: (text) => {
+            accumulated += text;
+            setIsThinking(false);
+            setIsStreaming(true);
+            setStreamingContent(accumulated);
+          },
+          onResult: (r) => {
+            result = r;
+          },
+          onDone: () => {
+            finish();
+            const r = result as AgentResearchResult | null;
+            if (!r) {
+              finalizeAnswer(accumulated || "Research ended without a result.", []);
+              return;
+            }
+            const content =
+              r.answer ||
+              (r.status === "FAILED"
+                ? "I couldn't find relevant evidence for this question in the selected documents."
+                : "I couldn't write a synthesized answer (the local model may be unavailable). The evidence that was found is listed below.");
+            const { answer: _a, sources, citation_verification, contradictions, evidence_assessment, ...research } = r;
+            void _a;
+            finalizeAnswer(content, sources, undefined, citation_verification, contradictions, {
+              evidenceAssessment: evidence_assessment ?? null,
+              question,
+              research,
+            });
+          },
+          onError: (detail) => {
+            finish();
+            if (accumulated) finalizeAnswer(accumulated, [], undefined, undefined, undefined, { question });
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "system",
+                content: `Research failed: ${detail}`,
+                retryQuestion: question,
+              },
+            ]);
+            toast.error("Deep research failed", { description: detail });
+          },
+        },
+        controller.signal,
+        { collection_id: activeCollectionId },
+      );
+    },
+    [finalizeAnswer, setMessages, activeCollectionId],
+  );
+
   // -------------------------------------------------------------------------
   const sendMessage = useCallback(
     (question: string) => {
@@ -396,11 +490,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           {
             id: crypto.randomUUID(),
             role: "user",
-            content: `🔬 Research: ${trimmed}`,
+            content: `${researchDepth === "deep" ? "Deep research" : "Research"}: ${trimmed}`,
             timestamp: now(),
           },
         ]);
-        runResearchQuery(trimmed);
+        if (researchDepth === "deep") runDeepResearch(trimmed);
+        else runResearchQuery(trimmed);
         return;
       }
 
@@ -423,7 +518,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       ]);
       runQuery(trimmed);
     },
-    [isThinking, isStreaming, isResearchMode, queryClient, setMessages, runQuery, runResearchQuery, documentFilter],
+    [isThinking, isStreaming, isResearchMode, researchDepth, queryClient, setMessages, runQuery, runResearchQuery, runDeepResearch, documentFilter],
   );
 
   const resolveDisambiguation = useCallback(
@@ -459,6 +554,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     abortRef.current = null;
     setIsThinking(false);
     setIsStreaming(false);
+    setResearchSteps([]);
     if (streamingContent) {
       finalizeAnswer(streamingContent, streamingSources);
     } else {
@@ -546,6 +642,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       disambiguationPending, resolveDisambiguation, cancelDisambiguation,
       documentFilter, setDocumentFilter,
       isResearchMode, setIsResearchMode,
+      researchDepth, setResearchDepth, researchSteps,
     }),
     [
       messages, lastSources, isThinking, isStreaming, streamingContent,
@@ -555,6 +652,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       disambiguationPending, resolveDisambiguation, cancelDisambiguation,
       documentFilter, setDocumentFilter,
       isResearchMode, setIsResearchMode,
+      researchDepth, setResearchDepth, researchSteps,
     ],
   );
 

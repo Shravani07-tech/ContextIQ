@@ -7,7 +7,12 @@
 
 from pydantic import BaseModel, Field, field_validator
 
-from api.schemas.insights import DocumentCoverage, EvidenceAssessment, TimelineEvent
+from api.schemas.insights import (
+    DocumentCoverage,
+    EvidenceAssessment,
+    ResearchSubquestion,
+    TimelineEvent,
+)
 
 
 # --- chat -------------------------------------------------------------------
@@ -299,6 +304,19 @@ class ReportExportRequest(BaseModel):
     evidence_assessment: EvidenceAssessment | None = Field(
         default=None,
         description="Evidence assessment to include in the report",
+    )
+    subquestions: list[ResearchSubquestion] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Bounded-research plan with per-sub-question status",
+    )
+    unresolved: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Questions the research could not answer from the documents",
+    )
+    research_status: str | None = Field(
+        default=None, description="COMPLETED | PARTIAL | CANCELLED | FAILED"
     )
 
 

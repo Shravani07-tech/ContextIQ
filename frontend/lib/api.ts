@@ -31,6 +31,9 @@ import type {
   TagActionResponse,
   ScopeParams,
   TagListResponse,
+  AgentResearchResult,
+  ResearchStep,
+  ResearchSubquestion,
   TimelineEvent,
   TimelineRequest,
   TimelineResponse,
@@ -119,6 +122,85 @@ function scopeQuery(params: ScopeParams & { limit?: number }): string {
   for (const f of params.filenames ?? []) q.append("filenames", f);
   if (params.limit) q.set("limit", String(params.limit));
   return q.toString();
+}
+
+/** A decoded SSE frame. Payload fields depend on `type`; each endpoint's
+    dispatcher reads only the fields its event types define. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SSEEvent = { type: string; [key: string]: any };
+
+/**
+ * POST a JSON body to an SSE endpoint and dispatch each `data:` frame.
+ * Shared by every streaming endpoint so frame buffering (frames split
+ * across network chunks), the terminal done/error events, and abort
+ * handling behave identically everywhere. `onEvent` handles every other
+ * event type.
+ */
+async function streamSSE(
+  path: string,
+  body: unknown,
+  signal: AbortSignal,
+  handlers: {
+    onEvent: (event: SSEEvent) => void;
+    onDone: () => void;
+    onError: (detail: string) => void;
+  },
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch {
+    if (signal.aborted) return;
+    handlers.onError("Backend is unreachable. Is the API running?");
+    return;
+  }
+
+  if (!response.ok || !response.body) {
+    handlers.onError(errorDetail(await response.text(), response.status));
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let sepIndex: number;
+      while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, sepIndex);
+        buffer = buffer.slice(sepIndex + 2);
+        const dataLine = frame
+          .split("\n")
+          .find((line) => line.startsWith("data: "));
+        if (!dataLine) continue;
+
+        const event = JSON.parse(dataLine.slice("data: ".length));
+        if (event.type === "done") {
+          handlers.onDone();
+          return;
+        }
+        if (event.type === "error") {
+          handlers.onError(event.detail);
+          return;
+        }
+        handlers.onEvent(event);
+      }
+    }
+    handlers.onDone();
+  } catch {
+    if (signal.aborted) return;
+    handlers.onError("The connection was interrupted mid-answer.");
+  }
 }
 
 export const api = {
@@ -369,78 +451,32 @@ export const api = {
       tag?: string | null;
       tags?: string[] | null;
     },
-  ): Promise<void> => {
-    let response: Response;
-    try {
-      response = await fetch(`${API_URL}/chat/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          history: opts?.history ?? [],
-          document_filter: opts?.documentFilter ?? null,
-          collection_id: opts?.collectionId ?? null,
-          tag: opts?.tag ?? null,
-          tags: opts?.tags ?? null,
-        }),
-        signal,
-      });
-    } catch {
-      if (signal.aborted) return;
-      callbacks.onError("Backend is unreachable. Is the API running?");
-      return;
-    }
-
-    if (!response.ok || !response.body) {
-      callbacks.onError(errorDetail(await response.text(), response.status));
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let sepIndex: number;
-        while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
-          const frame = buffer.slice(0, sepIndex);
-          buffer = buffer.slice(sepIndex + 2);
-          const dataLine = frame
-            .split("\n")
-            .find((line) => line.startsWith("data: "));
-          if (!dataLine) continue;
-
-          const event = JSON.parse(dataLine.slice("data: ".length));
-          if (event.type === "sources") callbacks.onSources(event.sources);
-          else if (event.type === "token") callbacks.onToken(event.text);
-          else if (event.type === "suggested_questions") {
-            callbacks.onSuggestedQuestions?.(event.questions);
-          } else if (event.type === "citation_verification") {
-            callbacks.onCitationVerification?.(event.verifications);
-          } else if (event.type === "contradictions") {
-            callbacks.onContradictions?.(event.contradictions);
-          } else if (event.type === "evidence_assessment") {
-            callbacks.onEvidenceAssessment?.(event.assessment);
-          } else if (event.type === "done") {
-            callbacks.onDone();
-            return;
-          } else if (event.type === "error") {
-            callbacks.onError(event.detail);
-            return;
-          }
-        }
-      }
-      callbacks.onDone();
-    } catch {
-      if (signal.aborted) return;
-      callbacks.onError("The connection was interrupted mid-answer.");
-    }
-  },
+  ): Promise<void> =>
+    streamSSE(
+      "/chat/stream",
+      {
+        question,
+        history: opts?.history ?? [],
+        document_filter: opts?.documentFilter ?? null,
+        collection_id: opts?.collectionId ?? null,
+        tag: opts?.tag ?? null,
+        tags: opts?.tags ?? null,
+      },
+      signal,
+      {
+        onDone: callbacks.onDone,
+        onError: callbacks.onError,
+        onEvent: (event) => {
+          const e = event;
+          if (e.type === "sources") callbacks.onSources(e.sources);
+          else if (e.type === "token") callbacks.onToken(e.text);
+          else if (e.type === "suggested_questions") callbacks.onSuggestedQuestions?.(e.questions);
+          else if (e.type === "citation_verification") callbacks.onCitationVerification?.(e.verifications);
+          else if (e.type === "contradictions") callbacks.onContradictions?.(e.contradictions);
+          else if (e.type === "evidence_assessment") callbacks.onEvidenceAssessment?.(e.assessment);
+        },
+      },
+    ),
 
   /** DELETE /database — clear every vector (files on disk are kept). */
   clearDatabase: () =>
@@ -470,69 +506,67 @@ export const api = {
       tag?: string | null;
       tags?: string[] | null;
     },
-  ): Promise<void> => {
-    let response: Response;
-    try {
-      response = await fetch(`${API_URL}/research/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          collection_id: opts?.collectionId ?? null,
-          tag: opts?.tag ?? null,
-          tags: opts?.tags ?? null,
-        }),
-        signal,
-      });
-    } catch {
-      if (signal.aborted) return;
-      callbacks.onError("Backend is unreachable. Is the API running?");
-      return;
-    }
+  ): Promise<void> =>
+    streamSSE(
+      "/research/stream",
+      {
+        question,
+        collection_id: opts?.collectionId ?? null,
+        tag: opts?.tag ?? null,
+        tags: opts?.tags ?? null,
+      },
+      signal,
+      {
+        onDone: callbacks.onDone,
+        onError: callbacks.onError,
+        onEvent: (event) => {
+          const e = event;
+          if (e.type === "sources") callbacks.onSources(e.sources, e.doc_count ?? 0);
+          else if (e.type === "token") callbacks.onToken(e.text);
+        },
+      },
+    ),
 
-    if (!response.ok || !response.body) {
-      callbacks.onError(errorDetail(await response.text(), response.status));
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let sepIndex: number;
-        while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
-          const frame = buffer.slice(0, sepIndex);
-          buffer = buffer.slice(sepIndex + 2);
-          const dataLine = frame
-            .split("\n")
-            .find((line) => line.startsWith("data: "));
-          if (!dataLine) continue;
-
-          const event = JSON.parse(dataLine.slice("data: ".length));
-          if (event.type === "sources")
-            callbacks.onSources(event.sources, event.doc_count ?? 0);
-          else if (event.type === "token") callbacks.onToken(event.text);
-          else if (event.type === "done") {
-            callbacks.onDone();
-            return;
-          } else if (event.type === "error") {
-            callbacks.onError(event.detail);
-            return;
-          }
-        }
-      }
-      callbacks.onDone();
-    } catch {
-      if (signal.aborted) return;
-      callbacks.onError("The connection was interrupted mid-answer.");
-    }
-  },
+  /**
+   * POST /research/agent/stream — bounded multi-step research (C11):
+   * progress steps, the plan, sources, the streamed answer, and finally
+   * one structured result.
+   */
+  agentResearchStream: (
+    question: string,
+    callbacks: {
+      onProgress?: (step: ResearchStep) => void;
+      onPlan?: (subquestions: string[]) => void;
+      onSources?: (sources: Source[]) => void;
+      onToken: (text: string) => void;
+      onResult: (result: AgentResearchResult) => void;
+      onDone: () => void;
+      onError: (detail: string) => void;
+    },
+    signal: AbortSignal,
+    scope?: ScopeParams,
+  ): Promise<void> =>
+    streamSSE(
+      "/research/agent/stream",
+      {
+        question,
+        collection_id: scope?.collection_id ?? null,
+        filenames: scope?.filenames ?? null,
+      },
+      signal,
+      {
+        onDone: callbacks.onDone,
+        onError: callbacks.onError,
+        onEvent: (event) => {
+          const e = event;
+          if (e.type === "progress") callbacks.onProgress?.(e as unknown as ResearchStep);
+          else if (e.type === "plan") callbacks.onPlan?.(e.subquestions);
+          else if (e.type === "sources") callbacks.onSources?.(e.sources);
+          else if (e.type === "token") callbacks.onToken(e.text);
+          else if (e.type === "result") callbacks.onResult(e.result);
+        },
+      },
+    ),
 
   /** POST /research/export — download a Markdown, PDF, or Plain Text report. */
   exportResearchReport: async (payload: {
@@ -547,6 +581,9 @@ export const api = {
     document_filter?: string | null;
     timeline?: TimelineEvent[];
     evidence_assessment?: EvidenceAssessment | null;
+    subquestions?: ResearchSubquestion[];
+    unresolved?: string[];
+    research_status?: string | null;
   }): Promise<Blob> => {
     const response = await fetch(`${API_URL}/research/export`, {
       method: "POST",

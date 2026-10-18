@@ -323,6 +323,25 @@ class ResearchReportService:
     def _extra_sections(self, payload: dict[str, Any]) -> list[tuple[str, list[str]]]:
         sections: list[tuple[str, list[str]]] = []
 
+        subquestions = payload.get("subquestions") or []
+        if subquestions:
+            lines = []
+            if payload.get("research_status"):
+                lines += [f"**Status:** {payload['research_status']}", ""]
+            for sq in subquestions:
+                labels = ", ".join(sq.get("source_labels") or []) or "no sources"
+                lines.append(f"- **{sq.get('status', 'UNRESOLVED')}**: {sq.get('question', '')} ({labels})")
+                if sq.get("note"):
+                    lines.append(f"  - {sq['note']}")
+            sections.append(("Research Process", lines))
+
+        unresolved = payload.get("unresolved") or []
+        if unresolved:
+            sections.append((
+                "Unresolved Questions",
+                ["The documents in scope did not fully answer:", ""] + [f"- {q}" for q in unresolved],
+            ))
+
         timeline = payload.get("timeline") or []
         if timeline:
             lines = [
