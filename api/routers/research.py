@@ -124,7 +124,8 @@ async def export_research_report(body: ReportExportRequest) -> Response:
                     "Content-Disposition": 'attachment; filename="contextiq-research-report.md"'
                 },
             )
-    except Exception as e:
+    except Exception:
+        # Details go to the server log only; the client gets a generic message.
         logger.exception("Failed to generate export report")
-        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Report generation failed.")
 

@@ -236,11 +236,14 @@ class HybridRetriever:
         collection_id: str | None = None,
         tag: str | None = None,
         tags: list[str] | None = None,
+        filenames: list[str] | None = None,
     ) -> list[dict]:
         """
         Hybrid retrieval: vector + BM25 → RRF → reranker → top_k chunks.
 
         Optional candidate scoping parameters:
+        - filenames: explicit set of allowed filenames (intersected with
+          every other filter; an empty list matches nothing)
         - document_filter: single filename restrict
         - collection_id: collection ID restrict
         - tag / tags: tag filter restrict (AND matching for multiple tags)
@@ -264,6 +267,13 @@ class HybridRetriever:
                     current_allowed.intersection_update(t_filenames)
 
             allowed_filenames = current_allowed
+
+        if filenames is not None:
+            explicit = set(filenames)
+            allowed_filenames = (
+                explicit if allowed_filenames is None
+                else allowed_filenames.intersection(explicit)
+            )
 
         if document_filter is not None:
             if allowed_filenames is None:

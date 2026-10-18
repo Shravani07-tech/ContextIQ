@@ -22,6 +22,7 @@ vi.mock("sonner", () => ({
 interface StreamCallbacks {
   onSources: (sources: Source[]) => void;
   onToken: (text: string) => void;
+  onSuggestedQuestions?: (questions: string[]) => void;
   onDone: () => void;
   onError: (detail: string) => void;
 }

@@ -27,6 +27,7 @@ class LLM:
         self,
         model: str = LLM_MODEL_NAME,
         base_url: str = OLLAMA_BASE_URL,
+        timeout: float = 300,
     ) -> None:
         """
         Store the model name and server address for later requests.
@@ -36,6 +37,9 @@ class LLM:
         """
         self.model = model
         self.base_url = base_url
+        # Per-request HTTP timeout (seconds). Feature services pass their
+        # own, shorter budget so one slow call can't stall a whole request.
+        self.timeout = timeout
 
     # Generation options sent with every request:
     #   temperature  low -> factual, repeatable grounded answers.
@@ -63,6 +67,7 @@ class LLM:
         stream: bool,
         history: list[dict] | None = None,
         format: str | None = None,
+        max_tokens: int | None = None,
     ) -> dict:
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
@@ -78,7 +83,11 @@ class LLM:
             "model": self.model,
             "messages": messages,
             "stream": stream,
-            "options": self._OPTIONS,
+            "options": (
+                {**self._OPTIONS, "num_predict": max_tokens}
+                if max_tokens
+                else self._OPTIONS
+            ),
             "keep_alive": self._KEEP_ALIVE,
         }
         if format:
@@ -91,11 +100,21 @@ class LLM:
         user_prompt: str,
         history: list[dict] | None = None,
         format: str | None = None,
+        max_tokens: int | None = None,
     ) -> str:
+        """Blocking generation. ``max_tokens`` overrides the default answer
+        cap for structured-extraction calls that need a longer JSON reply."""
         response = requests.post(
             f"{self.base_url}/api/chat",
-            json=self._payload(system_prompt, user_prompt, stream=False, history=history, format=format),
-            timeout=300,
+            json=self._payload(
+                system_prompt,
+                user_prompt,
+                stream=False,
+                history=history,
+                format=format,
+                max_tokens=max_tokens,
+            ),
+            timeout=self.timeout,
         )
         response.raise_for_status()
         return response.json()["message"]["content"]
@@ -125,7 +144,7 @@ class LLM:
             f"{self.base_url}/api/chat",
             json=self._payload(system_prompt, user_prompt, stream=True, history=history),
             stream=True,
-            timeout=300,
+            timeout=self.timeout,
         )
         response.raise_for_status()
         try:

@@ -19,8 +19,8 @@ from config import (
     COMPARISON_MAX_INPUT_CHARS,
 )
 from llm import LLM
-from metadata_store import MetadataStore
 from retrieval import HybridRetriever
+from scope import resolve_scope
 
 logger = logging.getLogger(__name__)
 
@@ -133,20 +133,10 @@ class ComparisonService:
         if not filenames or len(filenames) < 2:
             raise ValueError("Comparison requires at least 2 documents.")
 
-        # 1. Scope & Existence Validation
-        if collection_id is not None:
-            allowed_docs = MetadataStore.list_documents(collection_id=collection_id)
-            allowed_set = {d["filename"] for d in allowed_docs}
-            for fname in filenames:
-                if fname not in allowed_set:
-                    raise PermissionError(
-                        f"Document '{fname}' is not accessible within collection '{collection_id}'."
-                    )
-        else:
-            for fname in filenames:
-                meta = MetadataStore.get_document_meta(fname)
-                if not meta:
-                    raise ValueError(f"Document '{fname}' does not exist in the knowledge base.")
+        # 1. Scope & Existence Validation -- the shared resolver rejects
+        # unknown documents (ValueError) and documents outside the
+        # collection (PermissionError), same rule as every other feature.
+        resolve_scope(collection_id=collection_id, filenames=filenames)
 
         effective_question = (
             question.strip()

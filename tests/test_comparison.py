@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from comparison_service import ComparisonService, _parse_comparison_json
+from metadata_store import MetadataStore
 
 
 class ComparisonServiceUnitTests(unittest.TestCase):
@@ -41,11 +42,12 @@ class ComparisonServiceUnitTests(unittest.TestCase):
         parsed3 = _parse_comparison_json(raw3, filenames)
         self.assertTrue(len(parsed3["similarities"]) > 0 or len(parsed3["differences"]) > 0)
 
-    @patch("comparison_service.MetadataStore")
     @patch("api.services.rag_service.RagService._enrich_sources")
-    def test_compare_documents_success(self, mock_enrich, mock_metadata_store):
+    def test_compare_documents_success(self, mock_enrich):
         """Verify end-to-end comparison with mocked retriever and LLM."""
-        mock_metadata_store.get_document_meta.side_effect = lambda fname: {"filename": fname}
+        for name in ("report_2024.pdf", "report_2025.pdf"):
+            MetadataStore.upsert_document(name, "pdf")
+            self.addCleanup(MetadataStore.delete_document_meta, name)
 
         mock_retriever = MagicMock()
         mock_retriever.retrieve.side_effect = lambda query, top_k, document_filter, collection_id: [
@@ -78,26 +80,26 @@ class ComparisonServiceUnitTests(unittest.TestCase):
         self.assertEqual(res["differences"], ["Difference 1"])
         self.assertEqual(len(res["sources"]), 2)
 
-    @patch("comparison_service.MetadataStore")
-    def test_compare_documents_missing_document(self, mock_metadata_store):
+    def test_compare_documents_missing_document(self):
         """Verify ValueError raised when a requested document does not exist."""
-        mock_metadata_store.get_document_meta.return_value = None
-
         service = ComparisonService(retriever=MagicMock(), llm=MagicMock())
         with self.assertRaises(ValueError):
             service.compare_documents(["nonexistent.pdf", "valid.pdf"])
 
-    @patch("comparison_service.MetadataStore")
-    def test_compare_documents_collection_scope_isolation(self, mock_metadata_store):
+    def test_compare_documents_collection_scope_isolation(self):
         """Verify PermissionError raised when a document is outside active collection."""
-        # Collection A only contains doc_a.pdf
-        mock_metadata_store.list_documents.return_value = [{"filename": "doc_a.pdf"}]
+        coll = MetadataStore.create_collection("Comparison scope A")
+        self.addCleanup(MetadataStore.delete_collection, coll["id"])
+        MetadataStore.upsert_document("cmp_doc_a.pdf", "pdf", collection_id=coll["id"])
+        MetadataStore.upsert_document("cmp_doc_b.pdf", "pdf")
+        self.addCleanup(MetadataStore.delete_document_meta, "cmp_doc_a.pdf")
+        self.addCleanup(MetadataStore.delete_document_meta, "cmp_doc_b.pdf")
 
         service = ComparisonService(retriever=MagicMock(), llm=MagicMock())
         with self.assertRaises(PermissionError):
             service.compare_documents(
-                filenames=["doc_a.pdf", "doc_b.pdf"],
-                collection_id="collection_a_id",
+                filenames=["cmp_doc_a.pdf", "cmp_doc_b.pdf"],
+                collection_id=coll["id"],
             )
 
 
