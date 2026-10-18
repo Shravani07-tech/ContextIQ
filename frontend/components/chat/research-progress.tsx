@@ -8,6 +8,10 @@
 // instead of an unexplained spinner. ResearchPanel renders the finished
 // run: each sub-question's status, what remains unresolved, warnings,
 // and the limits that bounded the run.
+//
+// Sub-question statuses describe the EVIDENCE, not the answer's
+// content: "Evidence found" means relevant passages were retrieved and
+// cited — the passages may still lack the specific fact asked for.
 
 import { CheckCircle2, ChevronDown, CircleDashed, CircleHelp, Loader2, Telescope } from "lucide-react";
 import { useState } from "react";
@@ -58,9 +62,9 @@ export function ResearchProgress({ steps }: { steps: ResearchStep[] }) {
 }
 
 const SUB_STATUS: Record<ResearchSubquestion["status"], { tone: Tone; label: string; icon: typeof CheckCircle2 }> = {
-  ANSWERED: { tone: "success", label: "Answered", icon: CheckCircle2 },
-  PARTIAL: { tone: "warning", label: "Partial", icon: CircleDashed },
-  UNRESOLVED: { tone: "error", label: "Unresolved", icon: CircleHelp },
+  ANSWERED: { tone: "success", label: "Evidence found", icon: CheckCircle2 },
+  PARTIAL: { tone: "warning", label: "Weak evidence", icon: CircleDashed },
+  UNRESOLVED: { tone: "error", label: "No evidence", icon: CircleHelp },
 };
 
 const RUN_STATUS: Record<string, Tone> = {
@@ -117,7 +121,7 @@ export function ResearchPanel({ research }: { research: NonNullable<ChatMessage[
           </ul>
           {research.unresolved.length > 0 && (
             <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-warning">
-              Not fully answered by your documents: {research.unresolved.join(" · ")}
+              Little or no supporting evidence in your documents for: {research.unresolved.join(" · ")}
             </p>
           )}
           {research.warnings.map((w) => (

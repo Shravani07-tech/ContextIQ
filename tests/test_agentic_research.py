@@ -182,6 +182,15 @@ class AgenticResearchTests(AgentTestBase):
         self.assertTrue(result["sources"])
         llm.generate_stream.assert_not_called()  # no repeated calls after a failure
 
+    def test_missing_citation_check_is_surfaced(self):
+        retriever = MagicMock()
+        retriever.retrieve.return_value = [self.in_chunk, self.in_chunk2]
+        researcher = self._researcher(retriever, self._llm())
+        researcher.verifier.verify_citations.return_value = []  # e.g. model timed out
+        result = run_to_completion(researcher, "What was revenue in 2024?", collection_id=self.coll["id"])
+        self.assertIsNone(result["evidence_assessment"])
+        self.assertTrue(any("citation check returned no results" in w for w in result["warnings"]))
+
     def test_synthesis_failure_is_partial(self):
         import requests
 

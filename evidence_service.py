@@ -27,6 +27,10 @@
 # A rating can only be *lowered* by missing or conflicting evidence;
 # nothing here can upgrade a claim beyond what the citation check found.
 #
+# CORROBORATION counts only passages cited by the check or containing
+# most (>= 60%) of the claim's key terms; looser matches are listed as
+# related passages but do not raise a rating.
+#
 # INDEPENDENCE: passages from the same document count once. Passages from
 # different documents whose text is a near-duplicate (5-word shingle
 # Jaccard >= 0.6) are treated as copies of one underlying source, so a
@@ -177,8 +181,13 @@ class EvidenceService:
         scored.sort(key=lambda s: (-int(s[1]), -s[0]))
 
         best_overlap = max((s[0] for s in scored), default=0.0)
-        relevant_groups = {groups.get(c["chunk_id"], c.get("filename")) for _, _, c in scored}
-        relevant_docs = {c.get("filename") for _, _, c in scored}
+        # Corroboration counts only passages the citation check cited or
+        # that contain most of the claim's key terms (HIGH overlap). A
+        # passage that merely shares names with the claim is shown as
+        # related but never counted as an independent confirmation.
+        corroborating = [c for overlap, is_cited, c in scored if is_cited or overlap >= 0.6]
+        relevant_groups = {groups.get(c["chunk_id"], c.get("filename")) for c in corroborating}
+        relevant_docs = {c.get("filename") for c in corroborating}
         independent = len(relevant_groups)
         duplicates_collapsed = max(0, len(relevant_docs) - independent)
 
@@ -213,7 +222,9 @@ class EvidenceService:
 
         # 3. Corroboration.
         if independent == 0:
-            reasons.append("No retrieved passage contains the claim's key terms.")
+            reasons.append(
+                "No retrieved passage was cited for the claim or contains most of its key terms."
+            )
         else:
             reasons.append(
                 f"Relevant passages come from {independent} independent source"

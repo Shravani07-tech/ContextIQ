@@ -303,6 +303,11 @@ class AgenticResearcher:
             else:
                 yield step("verify", "Checking citations and looking for conflicting evidence.")
                 verification, contradictions = self._verify(answer, cited_chunks or [s["chunk"] for s in sources])
+                if not verification:
+                    state["warnings"].append(
+                        "The citation check returned no results (the local model may have timed out), "
+                        "so claim-level evidence ratings are unavailable for this answer."
+                    )
                 assessment = EvidenceService().assess_answer(
                     verification, [s["chunk"] for s in sources], contradictions
                 )

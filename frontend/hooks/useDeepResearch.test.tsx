@@ -138,11 +138,11 @@ describe("research components", () => {
     void [_a, _s, _c, _d, _e];
     render(<ResearchPanel research={research} />);
     // PARTIAL runs open by default so gaps are not hidden.
-    expect(screen.getByText("Answered")).toBeInTheDocument();
-    expect(screen.getByText("Unresolved")).toBeInTheDocument();
-    expect(screen.getByText(/Not fully answered by your documents/)).toBeInTheDocument();
+    expect(screen.getByText("Evidence found")).toBeInTheDocument();
+    expect(screen.getByText("No evidence")).toBeInTheDocument();
+    expect(screen.getByText(/Little or no supporting evidence/)).toBeInTheDocument();
     expect(screen.getByText(/3\/8 searches/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /research process/i }));
-    expect(screen.queryByText("Answered")).not.toBeInTheDocument();
+    expect(screen.queryByText("Evidence found")).not.toBeInTheDocument();
   });
 });

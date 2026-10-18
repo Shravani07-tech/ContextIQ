@@ -59,6 +59,15 @@ class RatingRuleTests(unittest.TestCase):
         self.assertEqual(r["rating"], "MODERATE")
         self.assertTrue(any("near-identical" in e for e in r["explanation"]))
 
+    def test_name_overlap_alone_is_not_corroboration(self):
+        claim = "Northwind Research notes that Jane Doe remains chief executive of Acme Robotics."
+        direct = _chunk("analyst.txt", 0, "Northwind Research notes that Jane Doe remains chief executive of Acme Robotics.")
+        names_only = _chunk("history.txt", 0, "Acme Robotics was founded by Jane Doe in Berlin.")
+        r = self.svc.assess_claim(claim, [direct, names_only],
+                                  {"status": "SUPPORTED", "citation_ids": [direct["chunk_id"]]}, [])
+        self.assertEqual(r["factors"]["independent_sources"], 1)
+        self.assertEqual(r["rating"], "MODERATE")
+
     def test_contradiction_overrides_support(self):
         contradiction = {"topic": "2024 revenue growth", "status": "CONTRADICTION", "severity": "HIGH",
                          "claim_a": "Revenue grew 25% in 2024.", "claim_b": "Revenue grew 12% in 2024.",
