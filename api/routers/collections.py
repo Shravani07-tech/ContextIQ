@@ -15,14 +15,27 @@ from metadata_store import MetadataStore
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 
+def _reject_duplicate_name(name: str, exclude_id: str | None = None) -> None:
+    """Collection names are unique case-insensitively. Enforced here rather
+    than with a UNIQUE index so databases that already contain duplicates
+    keep working; existing duplicates are left for the user to resolve."""
+    if MetadataStore.find_collection_by_name(name, exclude_id=exclude_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A collection named '{name.strip()}' already exists.",
+        )
+
+
 @router.post(
     "",
     response_model=CollectionResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new collection",
+    responses={409: {"description": "A collection with this name already exists"}},
 )
 def create_collection(body: CollectionCreate) -> CollectionResponse:
     """Create a new logical document collection."""
+    _reject_duplicate_name(body.name)
     coll = MetadataStore.create_collection(
         name=body.name,
         description=body.description,
@@ -65,11 +78,16 @@ def get_collection(collection_id: str) -> CollectionResponse:
     "/{collection_id}",
     response_model=CollectionResponse,
     summary="Update collection details",
+    responses={409: {"description": "A collection with this name already exists"}},
 )
 def update_collection(
     collection_id: str, body: CollectionUpdate
 ) -> CollectionResponse:
     """Update name, description, color, or icon for an existing collection."""
+    if body.name is not None:
+        if not body.name.strip():
+            raise HTTPException(status_code=422, detail="Collection name must not be empty")
+        _reject_duplicate_name(body.name, exclude_id=collection_id)
     coll = MetadataStore.update_collection(
         collection_id=collection_id,
         name=body.name,

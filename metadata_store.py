@@ -228,6 +228,23 @@ class MetadataStore:
             return dict(row) if row else None
 
     @staticmethod
+    def find_collection_by_name(
+        name: str, exclude_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Case-insensitive, whitespace-trimmed name lookup, used to stop
+        the API from creating look-alike duplicate collections."""
+        with _get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT id FROM collections
+                WHERE lower(trim(name)) = lower(trim(?)) AND id != ?
+                LIMIT 1
+                """,
+                (name, exclude_id or ""),
+            ).fetchone()
+        return MetadataStore.get_collection(row["id"]) if row else None
+
+    @staticmethod
     def update_collection(
         collection_id: str,
         name: Optional[str] = None,

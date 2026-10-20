@@ -65,6 +65,17 @@ def test_collection_crud(tmp_path):
 def test_document_move():
     collA = MetadataStore.create_collection("Collection A")
     collB = MetadataStore.create_collection("Collection B")
+    try:
+        _check_document_move(collA, collB)
+    finally:
+        # Never leave fixture collections behind (they used to accumulate
+        # in the real sidebar, one pair per test run).
+        MetadataStore.delete_collection(collA["id"])
+        MetadataStore.delete_collection(collB["id"])
+        MetadataStore.delete_document_meta("paper.pdf")
+
+
+def _check_document_move(collA, collB):
 
     MetadataStore.upsert_document("paper.pdf", file_type="pdf", collection_id=collA["id"])
     doc = MetadataStore.get_document("paper.pdf")

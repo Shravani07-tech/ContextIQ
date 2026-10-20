@@ -2,6 +2,7 @@
 
 import { Folder, Globe, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import {
   Dialog,
@@ -54,6 +55,9 @@ export function CollectionList() {
           setName("");
           setDescription("");
           setActiveCollectionId(newColl.id);
+        },
+        onError: (err: Error) => {
+          toast.error("Couldn't create collection", { description: err.message });
         },
       },
     );
