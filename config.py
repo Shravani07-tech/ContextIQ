@@ -63,6 +63,12 @@ EMBEDDING_MODEL_NAME = os.getenv(
 # fusion, so the actual ChromaDB query count is TOP_K*2=8 per retrieval.
 TOP_K = _env_int("CONTEXTIQ_TOP_K", 4)
 
+# Files in the data folder that are part of the repository, not
+# knowledge: never picked up by "index everything" (POST /index without
+# filenames, `python ingest.py`) and never overwritable by an upload.
+# Compared case-insensitively.
+RESERVED_DATA_FILENAMES = {"readme.md", ".gitkeep"}
+
 # Server-side per-file upload limit. The frontend enforces the same
 # number client-side for fast feedback, but THIS is the security
 # boundary — anything talking to the API directly hits it too.

@@ -9,7 +9,11 @@
 # Prerequisites:
 #   - dependencies installed (pip install -r requirements.txt)
 #   - Ollama running locally with the model from config.py
-#   - the demo corpus present in data/ (zephyra.txt)
+#
+# By default the run uses a throwaway sandbox: a temp data folder seeded
+# with the demo document (data/zephyra.txt) and an empty vector store,
+# so it never re-indexes or writes into your real knowledge base. Set
+# CONTEXTIQ_TEST_USE_REAL_DATA=1 to run against data/ and chroma_db/.
 #
 # Run with:  python tests/test_api.py
 # Exits 0 if every check passes, 1 otherwise.
@@ -17,9 +21,23 @@
 import os
 import sys
 
+import shutil
+import tempfile
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 os.chdir(PROJECT_ROOT)
+
+# Must happen before any project import: config.py and metadata_store.py
+# read these paths at import time.
+SANDBOXED = os.environ.get("CONTEXTIQ_TEST_USE_REAL_DATA") != "1"
+if SANDBOXED:
+    _sandbox = tempfile.mkdtemp(prefix="contextiq-e2e-")
+    os.environ["CONTEXTIQ_DATA_DIR"] = os.path.join(_sandbox, "data")
+    os.environ["CONTEXTIQ_CHROMA_DIR"] = os.path.join(_sandbox, "chroma_db")
+    os.makedirs(os.environ["CONTEXTIQ_DATA_DIR"])
+    shutil.copy(os.path.join(PROJECT_ROOT, "data", "zephyra.txt"), os.environ["CONTEXTIQ_DATA_DIR"])
+DATA_DIR = os.environ.get("CONTEXTIQ_DATA_DIR", os.path.join(PROJECT_ROOT, "data"))
 
 from fastapi.testclient import TestClient
 
@@ -40,6 +58,9 @@ def check(name: str, cond: bool, extra: str = "") -> None:
 
 def run_test_api():
     with TestClient(app) as client:  # `with` triggers the lifespan warm-up
+        if SANDBOXED:
+            # Seed the sandbox with the demo document the checks rely on.
+            client.post("/index", json={"filenames": ["zephyra.txt"]})
 
         # --- GET /health ----------------------------------------------------------
         r = client.get("/health")
@@ -77,7 +98,7 @@ def run_test_api():
               body["files"][0]["status"] == "saved"
               and body["files"][0]["filename"] == "api_test_notes.txt")
         check("uploaded file exists in data/",
-              os.path.isfile(os.path.join(PROJECT_ROOT, "data", "api_test_notes.txt")))
+              os.path.isfile(os.path.join(DATA_DIR, "api_test_notes.txt")))
 
         # Unsupported type is rejected per-file, not with a whole-request error.
         r = client.post(
@@ -99,7 +120,7 @@ def run_test_api():
               and "limit" in (body["error"] or ""),
               str(body["error"]))
         check("oversized file not written to data/",
-              not os.path.isfile(os.path.join(PROJECT_ROOT, "data", "too_big.txt")))
+              not os.path.isfile(os.path.join(DATA_DIR, "too_big.txt")))
 
         # Empty files are rejected server-side too.
         r = client.post(
@@ -155,7 +176,7 @@ def run_test_api():
         # on disk forever — it would silently resurface and get indexed
         # on a future full reindex. The backend should remove it and say
         # so in the per-file error.
-        corrupt_pdf_path = os.path.join(PROJECT_ROOT, "data", "corrupt.pdf")
+        corrupt_pdf_path = os.path.join(DATA_DIR, "corrupt.pdf")
         with open(corrupt_pdf_path, "wb") as f:
             f.write(b"this is not a valid pdf file at all")
         r = client.post("/index", json={"filenames": ["corrupt.pdf"]})
@@ -193,7 +214,7 @@ def run_test_api():
               and "zephyra.txt" in r.json()["documents"],
               str(r.json()["documents"]))
         check("deleted file removed from data/ on disk",
-              not os.path.isfile(os.path.join(PROJECT_ROOT, "data", "api_test_notes.txt")))
+              not os.path.isfile(os.path.join(DATA_DIR, "api_test_notes.txt")))
 
         # Deleting an unknown filename is a no-op, not an error.
         r = client.delete("/documents/never_existed.txt")
@@ -299,12 +320,12 @@ def run_test_api():
         check("empty-DB stream reports zero sources",
               empty_events[0] == {"type": "sources", "sources": []}, str(empty_events[0]))
 
-        # --- Cleanup: remove any leftover test uploads, rebuild the index from data/ ----------------
+        # --- Cleanup: remove any leftover test uploads, rebuild the index from the data folder ----------------
         # api_test_notes.txt was already removed by the DELETE /documents/
         # test above — isfile guards make this block safe whether that
         # ran or not.
         for leftover in ("api_test_notes.txt", "evil.txt"):
-            leftover_path = os.path.join(PROJECT_ROOT, "data", leftover)
+            leftover_path = os.path.join(DATA_DIR, leftover)
             if os.path.isfile(leftover_path):
                 os.remove(leftover_path)
 

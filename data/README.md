@@ -15,9 +15,20 @@ upload and index files in the UI, or run `python ingest.py`.
 
 ## Adding your own documents
 
-Drop `.pdf` or `.txt` files here (or upload them through the UI), then
-index them. Only `.pdf` and `.txt` are indexed; anything else in this
-folder (including this `README.md`) is ignored.
+Drop supported files here (or upload them through the UI), then index
+them. Supported types: `.pdf`, `.txt`, `.docx`, `.pptx`, `.xlsx`, `.csv`,
+`.md` / `.markdown`, `.html` / `.htm`. This `README.md` is never indexed
+and cannot be overwritten by an upload.
+
+## Removing documents
+
+The library's Delete action removes a document's vectors, metadata and
+summary **and deletes its file from this folder**. To remove a document
+from the knowledge base but keep the file (for example `zephyra.txt`),
+stop the backend and run:
+
+    python scripts/unindex_documents.py <filename>            # dry run
+    python scripts/unindex_documents.py --apply <filename>
 
 ## Privacy
 

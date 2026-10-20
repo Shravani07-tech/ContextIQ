@@ -10,7 +10,7 @@
 import logging
 import os
 
-from config import DATA_DIR
+from config import DATA_DIR, RESERVED_DATA_FILENAMES
 from ingest import ingest_file
 from vector_store import delete_document
 
@@ -54,6 +54,10 @@ class DocumentService:
         safe_name = os.path.basename(filename)
         if not safe_name or not self.is_supported(safe_name):
             raise ValueError(f"Unsupported file type: {filename!r}")
+        if safe_name.lower() in RESERVED_DATA_FILENAMES:
+            raise ValueError(
+                f"'{safe_name}' is a reserved name in the data folder; rename the file and upload again."
+            )
 
         file_path = os.path.join(DATA_DIR, safe_name)
         with open(file_path, "wb") as f:
@@ -77,6 +81,7 @@ class DocumentService:
             for name in os.listdir(DATA_DIR)
             if os.path.isfile(os.path.join(DATA_DIR, name))
             and self.is_supported(name)
+            and name.lower() not in RESERVED_DATA_FILENAMES
         )
 
     def index_files(self, filenames: list[str] | None = None) -> list[dict]:

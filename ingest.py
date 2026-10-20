@@ -16,7 +16,7 @@ import os
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from config import CHUNK_OVERLAP, CHUNK_SIZE, DATA_DIR
+from config import CHUNK_OVERLAP, CHUNK_SIZE, DATA_DIR, RESERVED_DATA_FILENAMES
 from embedding_model import get_embedding_model
 from parsers import NormalizedDocument, default_registry, strip_references
 from vector_store import save_chunks
@@ -55,6 +55,9 @@ def load_documents(data_dir: str = DATA_DIR) -> list[dict]:
         file_path = os.path.join(data_dir, filename)
 
         if not os.path.isfile(file_path):
+            continue
+        # The folder's own README is repository documentation, not knowledge.
+        if filename.lower() in RESERVED_DATA_FILENAMES:
             continue
 
         parser = default_registry.get_parser(filename)
